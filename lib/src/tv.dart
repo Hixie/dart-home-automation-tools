@@ -54,10 +54,9 @@ class TelevisionTransaction {
 class Television {
   Television({
     this.host,
-    this.port: 12549,
+    this.port: 10002,
     this.username,
     this.password,
-    this.onError,
   }) {
     assert(port != null);
   }
@@ -66,7 +65,6 @@ class Television {
   final int port;
   final String username;
   final String password;
-  final ErrorHandler onError;
 
   Socket _socket;
   StreamIterator<String> _responses;
@@ -93,7 +91,7 @@ class Television {
       socket.encoding = UTF8;
       socket.write('$username\x0d$password\x0d');
       await socket.flush();
-      responses = new StreamIterator<String>(_socket.transform(UTF8.decoder).transform(const LineSplitter()));
+      responses = new StreamIterator<String>(socket.transform(UTF8.decoder).transform(const LineSplitter()));
       await responses.moveNext();
       if (responses.current != 'Login:')
         throw new TelevisionException('did not get login prompt', responses.current, this);
