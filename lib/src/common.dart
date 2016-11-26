@@ -1,6 +1,7 @@
 import 'dart:async';
 
 typedef Future<Null> ErrorHandler(dynamic error);
+typedef void VoidCallback();
 
 abstract class StreamTransformerInstance<From, To> {
   bool handleData(From event, StreamSink<To> output);

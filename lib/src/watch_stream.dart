@@ -1,6 +1,7 @@
 import 'dart:async';
 
-typedef void VoidCallback();
+import 'common.dart';
+
 typedef void SinkCallback<T>(Sink<T> sink);
 typedef void HandleData<T>(T data);
 
@@ -84,6 +85,14 @@ class HandlerWatchStream<T> extends WatchStream<T> {
     if (_onEnd != null)
       _onEnd();
   }
+}
+
+class AlwaysOnWatchStream<T> extends WatchStream<T> {
+  @override
+  void handleStart() { }
+
+  @override
+  void handleEnd() { }
 }
 
 class _WatchStreamSubscription<T> extends StreamSubscription<T> {
