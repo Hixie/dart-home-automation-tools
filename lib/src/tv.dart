@@ -8,10 +8,18 @@ import 'watch_stream.dart';
 
 // This is written for the Sharp LC-70UD27U TV.
 
-const Duration _retryDelay = const Duration(milliseconds: 100);
-const Duration _inactivityTimeout = const Duration(seconds: 2);
-const Duration _connectTimeout = const Duration(seconds: 5);
-const Duration _responseTimeout = const Duration(seconds: 40);
+const Duration _reconnectDelay = const Duration(milliseconds: 750); // how quickly to reconnect
+const Duration _connectTimeout = const Duration(seconds: 10); // how long to try to connect for
+const Duration _inactivityTimeout = const Duration(seconds: 2); // how long to wait for no activity (including a response) before disconnecting
+const Duration _responseTimeout = const Duration(seconds: 30); // how long to wait for no activity (including a response) before disconnecting
+const Duration _retryDelay = const Duration(milliseconds: 150); // how quickly to resend when retrying for an expected response
+const Duration _retryTimeout = const Duration(seconds: 40); // how long to keep retrying for the expected response
+
+const bool _debugDumpTraffic = true;
+
+String get _timestamp => new DateTime.now().toIso8601String().padRight(26, '0');
+
+typedef void AbortWatcher(String message);
 
 class TelevisionException implements Exception {
   const TelevisionException(this.message, this.response, this.television);
@@ -22,7 +30,7 @@ class TelevisionException implements Exception {
   String toString() {
     if (response != null)
       return '$message: "$response"';
-    return message;
+    return '$message.';
   }
 }
 
@@ -32,7 +40,6 @@ class TelevisionTransaction {
     assert(television != null);
     assert(television._currentTransaction == null);
     television._currentTransaction = this;
-    //print('=== TRANSACTION OPEN');
   }
 
   final Television television;
@@ -42,37 +49,43 @@ class TelevisionTransaction {
   TelevisionException _error;
 
   void sendLine(String message) {
-    assert(television._currentTransaction == this);
     if (_error != null)
       throw _error;
+    assert(television._currentTransaction == this);
     assert(!_done.isCompleted);
-    television.resetTimeout();
+    if (_debugDumpTraffic)
+      print('$_timestamp ==> $message');
     television._socket.write('$message\x0d');
-    //print('==> $message');
   }
 
   Future<String> readLine() async {
-    assert(television._currentTransaction == this);
     if (_error != null)
       throw _error;
+    assert(television._currentTransaction == this);
     assert(!_done.isCompleted);
-    television.resetTimeout();
+    television.resetTimeout(_responseTimeout, 'Timed out awaiting response.');
     await television._responses.moveNext();
-    //print('<== ${television._responses.current}');
+    if (_debugDumpTraffic)
+      print('$_timestamp <== ${television._responses.current}');
     return television._responses.current;
   }
 
   void close() {
+    if (_error != null)
+      throw _error;
     assert(television._currentTransaction == this);
-    //print('=== TRANSACTION CLOSED');
+    assert(!_done.isCompleted);
     _done.complete();
     television._currentTransaction = null;
+    television.resetTimeout(_inactivityTimeout, 'Idle timeout after transaction.');
     if (television._transactionQueue != null && television._transactionQueue.isNotEmpty)
       television._transactionQueue.removeFirst().complete();
   }
 
   void _closeWithError(TelevisionException error) {
     assert(television._currentTransaction == this);
+    assert(!_done.isCompleted);
+    assert(_error == null);
     _error = error;
     _done.completeError(error);
     if (television._transactionQueue != null) {
@@ -93,6 +106,10 @@ enum TelevisionRemote {
   keyReturn, keyExit, keyCh, keyReserved48, keyReserved49, keyA, keyB,
   keyC, keyD, keyFreeze, keyApp1, keyApp2, keyApp3, key2D3D,
   keyNetFlix, keyAAL, keyManual,
+}
+
+enum TelevisionOffTimer {
+  disabled, min30, min60, min90, min120,
 }
 
 enum TelevisionSource {
@@ -221,55 +238,65 @@ class TelevisionChannel {
       case TelevisionSource.analogAir:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '1',
         );
       case TelevisionSource.analogCable:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '0',
         );
       case TelevisionSource.digitalAir:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '3',
         );
       case TelevisionSource.digitalCableTwoPart:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '2',
         );
       case TelevisionSource.digitalCableOnePart:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '4',
         );
       case TelevisionSource.hdmi1:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IAVD: '1',
           // we could use IDIN 11 or IDIN 50, but those return ERR if you're already on that input
         );
       case TelevisionSource.hdmi2:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IAVD: '2',
           // we could use IDIN 12 or IDIN 51, but those return ERR if you're already on that input
         );
       case TelevisionSource.hdmi3:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IAVD: '3',
           // we could use IDIN 13 or IDIN 52, but those return ERR if you're already on that input
         );
       case TelevisionSource.hdmi4:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IAVD: '4',
           // we could use IDIN 14 or IDIN 53, but those return ERR if you're already on that input
         );
       case TelevisionSource.input5: // composite or component
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IAVD: '5',
           // we could also use IDIN 15
           // we could also set INP5 to 0, which might mean "automatic selection"
@@ -277,47 +304,58 @@ class TelevisionChannel {
       case TelevisionSource.composite:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           INP5: '1',
         );
       case TelevisionSource.component:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           INP5: '2',
         );
       case TelevisionSource.ethernet: // home network
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '81',
         );
       case TelevisionSource.storage: // SD card or USB input
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '82',
         );
       case TelevisionSource.miracast:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '82',
           ITGD: 1,
         );
       case TelevisionSource.bluetooth:
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           IDIN: '82',
           ITGD: 2,
         );
       case TelevisionSource.manual: // documentation manual screen
         return new TelevisionChannel.raw(
           source: source,
+          POWR: '1',
           // client must special-case "manual" to mean "hit the manual key on the remote"
+        );
+      case TelevisionSource.off:
+        return new TelevisionChannel.raw(
+          source: source,
+          POWR: '0',
         );
       case TelevisionSource.analog:
       case TelevisionSource.unknown:
       case TelevisionSource.switching:
-      case TelevisionSource.off:
         break; // must be last in switch statement
     }
-    throw new TelevisionException('selected source is too ambiguous', source.toString(), null);
+    throw new TelevisionException('Selected source is too ambiguous', source.toString(), null);
   }
 
   // Create a source object to represent a specific TV channel.
@@ -364,7 +402,7 @@ class TelevisionChannel {
           DC11: '${channel[1]}${channel[2]}${channel[3]}${channel[4]}',
         );
       default:
-        throw new TelevisionException('unknown tv channel format', format, null);
+        throw new TelevisionException('Unknown TV channel format', format, null);
     }
   }
 
@@ -453,7 +491,7 @@ class TelevisionChannel {
       case TelevisionSource.hdmi4:
         return 'HDMI4';
       case TelevisionSource.input5:
-        return 'component or composite';
+        return 'input 5'; // component or composite
       case TelevisionSource.composite:
         return 'composite';
       case TelevisionSource.component:
@@ -469,13 +507,13 @@ class TelevisionChannel {
       case TelevisionSource.manual:
         return 'the manual';
       case TelevisionSource.switching:
-        return 'switching inputs';
+        return 'switching...';
       case TelevisionSource.analog:
         if (DCCH != null)
           return 'analog channel $DCCH';
         return 'last analog channel';
       case TelevisionSource.unknown:
-        return 'unknown (${_fieldsToString()})';
+        return 'unknown';
         break;
       case TelevisionSource.off:
         return 'off';
@@ -508,19 +546,19 @@ class Television {
 
   // NETWORK
 
-  // 
   Socket _socket;
   StreamIterator<String> _responses;
   TelevisionTransaction _currentTransaction;
   Timer _inactivityTimer;
 
   Future<Null> _connect({
-    Duration delay: _retryDelay,
+    Duration delay: _reconnectDelay,
     Duration timeout: _connectTimeout,
   }) async {
     if (_socket != null) {
       assert(_responses != null);
-      resetTimeout();
+      if (_currentTransaction == null)
+        resetTimeout(_inactivityTimeout, 'Idle timeout after redundant connection request.');
       return null;
     }
     assert(_responses == null);
@@ -530,7 +568,7 @@ class Television {
     if (host == null) {
       final List<InternetAddress> hosts = await InternetAddress.lookup('tv.');
       if (hosts.isEmpty)
-        throw new TelevisionException('could not resolve TV in DNS', null, this);
+        throw new TelevisionException('Could not resolve TV in DNS', null, this);
       host = hosts.first;
     }
     Socket socket;
@@ -543,6 +581,8 @@ class Television {
     try {
       do {
         try {
+          if (_debugDumpTraffic)
+            print('$_timestamp ---- CONNECTING ----');
           socket = await Socket.connect(host, port);
           socket.encoding = UTF8;
           socket.write('$username\x0d$password\x0d');
@@ -550,16 +590,19 @@ class Television {
           responses = new StreamIterator<String>(socket.transform(UTF8.decoder).transform(const LineSplitter()));
           await responses.moveNext();
           if (responses.current != 'Login:')
-            throw new TelevisionException('did not get login prompt', responses.current, this);
+            throw new TelevisionException('Did not get login prompt from television', responses.current, this);
           await responses.moveNext();
           if (responses.current != 'Password:')
-            throw new TelevisionException('did not get password prompt', responses.current, this);
-        } on TelevisionException catch (error) {
-          errors ??= <dynamic>[];
-          errors.add(error);
-          socket?.destroy();
-          socket = null;
-          await new Future<Null>.delayed(delay); // too fast and it won't even open the socket
+            throw new TelevisionException('Did not get password prompt from television', responses.current, this);
+        } catch (error) {
+          if ((error is TelevisionException) ||
+              ((error is SocketException) && (error.osError.errorCode == 32))) { // broken pipe - they accepted the connection then closed it on us
+            errors ??= <dynamic>[];
+            errors.add(error);
+            socket?.destroy();
+            socket = null;
+            await new Future<Null>.delayed(delay); // too fast and it won't even open the socket
+          }
         }
       } while (socket == null && !canceled);
     } finally {
@@ -579,21 +622,25 @@ class Television {
     _socket = socket;
     _responses = responses;
     _currentTransaction = null;
-    resetTimeout();
+    resetTimeout(_inactivityTimeout, 'Idle timeout after connection.');
     _socket.done.whenComplete(() {
       if (_socket == socket) {
         assert(_responses == responses);
-        abort('connection lost');
+        abort('Connection lost.');
       }
     });
   }
 
-  void resetTimeout() {
+  void resetTimeout(Duration duration, String message) {
     _inactivityTimer?.cancel();
-    _inactivityTimer = new Timer(_inactivityTimeout, aborter('connection timed out'));
+    _inactivityTimer = new Timer(duration, aborter(message));
   }
 
+  Set<AbortWatcher> _abortWatchers = new Set<AbortWatcher>();
+
   void abort(String message) {
+    if (_debugDumpTraffic)
+      print('$_timestamp ---- DISCONNECTING - $message ----');
     _currentTransaction?._closeWithError(new TelevisionException(message, null, this));
     _currentTransaction = null;
     _socket.destroy();
@@ -603,37 +650,32 @@ class Television {
     _inactivityTimer.cancel();
     _inactivityTimer = null;
     _connectionStream.add(false);
+    for (AbortWatcher callback in _abortWatchers.toList())
+      callback(message);
   }
 
   VoidCallback aborter(String message) {
     return () { abort(message); };
   }
 
-  void close() {
-    assert(_currentTransaction == null);
-    _socket?.destroy();
-    _socket = null;
-    _responses?.cancel();
-    _responses = null;
-    _inactivityTimer?.cancel();
-    _inactivityTimer = null;
-  }
-
   void dispose() {
-    close();
+    abort('Shutting down...');
     _connectionStream.close();
   }
 
   Queue<Completer<Null>> _transactionQueue;
 
   Future<TelevisionTransaction> openTransaction() async {
-    await _connect();
     if (_currentTransaction != null) {
       _transactionQueue ??= new Queue<Completer<Null>>();
       Completer<Null> completer = new Completer<Null>();
       _transactionQueue.addLast(completer);
       await completer.future;
+      assert(_currentTransaction == null);
     }
+    // It is critical that there be no asynchronous anything between the check
+    // where _currentTransaction == null above and the call to the
+    // TelevisionTransaction constructor below.
     assert(_currentTransaction == null);
     final TelevisionTransaction transaction = new TelevisionTransaction._(this);
     assert(_currentTransaction == transaction);
@@ -647,18 +689,25 @@ class Television {
     assert(command.length == 4);
     assert(argument != null);
     final String message = '$command${argument.padRight(4, ' ')}';
+    await _connect();
     final TelevisionTransaction result = await openTransaction();
     result.sendLine(message);
     return result;
   }
 
-  Future<Null> sendCommand(String message, [ String argument = '' ] ) async {
+  /// Open a transaction to send the given command.
+  ///
+  /// Returns true on success. If `errorIsOk` is true, returns false on an `ERR`
+  /// response. Otherwise, throws on error.
+  Future<bool> sendCommand(String message, { String argument = '', bool errorIsOk: false }) async {
     final TelevisionTransaction transaction = await sendMessage(message, argument);
     final String response = await transaction.readLine();
     transaction.close();
+    if (errorIsOk && response == 'ERR')
+      return false;
     if (response != 'OK')
-      throw new TelevisionException('response to "$message" (argument "$argument") was not OK', response, this);
-    return null;
+      throw new TelevisionException('Response to "$message$argument" was unexpectedly not "OK"', response, this);
+    return true;
   }
 
   Future<String> readRawValue(String message, [ String argument = '?' ] ) async {
@@ -672,76 +721,96 @@ class Television {
     String argument: '?',
     String desiredResponse: 'OK',
     Duration delay: _retryDelay,
-    Duration timeout: _responseTimeout,
+    Duration timeout: _retryTimeout,
   }) async {
-    bool canceled = false;
+    String canceled;
     Timer timeoutTimer = new Timer(timeout, () {
-      canceled = true;
-      abort('timed out awaiting desired response to "$message"');
+      abort('Timed out awaiting desired response to "$message".');
     });
+    AbortWatcher handleAbort = (String message) { canceled = message; };
+    _abortWatchers.add(handleAbort);
     try {
-      while (!canceled && await readRawValue(message, argument) != desiredResponse)
+      while (canceled == null && await readRawValue(message, argument) != desiredResponse)
         await new Future<Null>.delayed(delay);
     } finally {
       timeoutTimer.cancel();
+      _abortWatchers.remove(handleAbort);
     }
-    if (canceled)
-      throw new TelevisionException('timed out awaiting desired response to "$message"', null, this);
+    if (canceled != null)
+      throw new TelevisionException(canceled, null, this);
   }
 
   Future<Null> nonErrorResponse(String message, {
     String argument: '?',
     Duration delay: _retryDelay,
-    Duration timeout: _responseTimeout,
+    Duration timeout: _retryTimeout,
+    bool skipOk: false,
   }) async {
-    bool canceled = false;
+    String canceled;
     Timer timeoutTimer = new Timer(timeout, () {
-      canceled = true;
-      abort('timed out awaiting successful response to "$message"');
+      abort('Timed out awaiting successful response to "$message".');
     });
+    AbortWatcher handleAbort = (String message) { canceled = message; };
+    _abortWatchers.add(handleAbort);
     try {
-      while (!canceled && await readRawValue(message, argument) == 'ERR')
+      while (canceled == null) {
+        final TelevisionTransaction transaction = await sendMessage(message, argument);
+        String response = await transaction.readLine();
+        if (skipOk && response == 'OK')
+          response = await transaction.readLine();
+        transaction.close();
+        if (response != 'ERR')
+          break;
         await new Future<Null>.delayed(delay);
+      }
     } finally {
       timeoutTimer.cancel();
+      _abortWatchers.remove(handleAbort);
     }
-    if (canceled)
-      throw new TelevisionException('timed out awaiting successful response to "$message"', null, this);
+    if (canceled != null)
+      throw new TelevisionException(canceled, null, this);
   }
 
-  Future<String> readValue(String message, [ String argument = '?' ] ) async {
+  Future<String> readValue(String message, { String argument: '?', bool errorIsNull: true }) async {
     final String response = await readRawValue(message, argument);
-    if (response == 'ERR')
-      throw new TelevisionException('failure response to "$message" (argument "$argument")', response, this);
+    if (response == 'ERR') {
+      if (errorIsNull)
+        return null;
+      throw new TelevisionException('Unexpected response to "$message$argument"', response, this);
+    }
     return response;
   }
 
   // MESSAGES
 
-  Future<Null> get inputStable => nonErrorResponse('RDIN');
+  Future<Null> get inputStable => nonErrorResponse('RDIN', skipOk: true);
 
   Future<bool> get power async {
-    final String response = await readValue('POWR');
+    final String response = await readValue('POWR', errorIsNull: false);
     switch (response) {
      case '0':
        return false;
      case '1':
        return true;
     }
-    throw new TelevisionException('unknown response to "POWR" message', response, this);
+    throw new TelevisionException('Unknown response to "POWR" message', response, this);
   }
 
   Future<Null> setPower(bool value) async {
     final String argument = value ? '1' : '0';
-    await sendCommand('POWR', argument);
+    await sendCommand('POWR', argument: argument);
     await matchingResponse('POWR', desiredResponse: argument);
     if (value)
       await inputStable;
   }
 
-  Future<Null> sendRemote(TelevisionRemote key) => sendCommand('RCKY', key.index.toString());
+  Future<Null> sendRemote(TelevisionRemote key) async {
+    await sendCommand('RCKY', argument: key.index.toString());
+  }
 
-  Future<Null> showMessage(String message) => sendCommand('KLCD', message);
+  Future<Null> showMessage(String message) async {
+    await sendCommand('KLCD', argument: message);
+  }
 
   Future<Null> nextInput() async {
     await sendCommand('ITGD');
@@ -753,13 +822,23 @@ class Television {
     await inputStable;
   }
 
+  Future<Null> channelUp() async {
+    await sendCommand('CHUP');
+    await inputStable;
+  }
+
+  Future<Null> channelDown() async {
+    await sendCommand('CHDW');
+    await inputStable;
+  }
+
   Future<TelevisionChannel> get input async {
     final String POWR = await readRawValue('POWR');
     final String RDIN = await readRawValue('RDIN');
     final String IDIN = await readRawValue('IDIN');
     final String IAVD = await readRawValue('IAVD');
     final String INP5 = await readRawValue('INP5');
-    if (RDIN[0] == '0' || IDIN.length == 1) {
+    if ((RDIN.length > 0 && RDIN[0] == '0') || IDIN.length == 1) {
       return new TelevisionChannel.fromValues(
         POWR: POWR,
         RDIN: RDIN,
@@ -786,35 +865,39 @@ class Television {
 
   Future<Null> setInput(TelevisionChannel value) async {
     assert(value.RDIN == null);
-    assert(value.POWR == null);
-    TelevisionChannel current = await input;
-    if (current.source != value.source) {
-      // The order here is important.
-      // In particular:
-      //  - POWR before everything.
-      //  - IDIN < DC2U < DC2L.
-      //  - everything before ITGD.
-      //  - IAVD < INP5.
-      if (current.POWR != '1')
-        await setPower(true);
+    // The order here is important.
+    // In particular:
+    //  - POWR before everything.
+    //  - IDIN < DC2U < DC2L.
+    //  - everything before ITGD.
+    //  - IAVD < INP5.
+    await setPower(value.POWR != '0');
+    if (value.POWR != '0') {
+      await inputStable;
       if (value.IDIN != null)
-        await sendCommand('IDIN', value.IDIN);
+        await sendCommand('IDIN', argument: value.IDIN);
       if (value.DCCH != null)
-        await sendCommand('DCCH', value.DCCH);
+        await sendCommand('DCCH', argument: value.DCCH);
       if (value.DA2P != null)
-        await sendCommand('DA2P', value.DA2P);
+        await sendCommand('DA2P', argument: value.DA2P);
       if (value.DC2U != null)
-        await sendCommand('DC2U', value.DC2U);
+        await sendCommand('DC2U', argument: value.DC2U);
       if (value.DC2L != null)
-        await sendCommand('DC2L', value.DC2L);
+        await sendCommand('DC2L', argument: value.DC2L);
       if (value.DC10 != null)
-        await sendCommand('DC10', value.DC10);
+        await sendCommand('DC10', argument: value.DC10);
       if (value.DC11 != null)
-        await sendCommand('DC11', value.DC11);
-      if (value.IAVD != null)
-        await sendCommand('IAVD', value.IAVD);
+        await sendCommand('DC11', argument: value.DC11);
+      if (value.IAVD != null) {
+        bool result = await sendCommand('IAVD', argument: value.IAVD, errorIsOk: true);
+        if (!result) {
+          String current = await readRawValue('IAVD');
+          if (current != value.IAVD)
+            throw new TelevisionException('Received error response to message "IAVD${value.IAVD}" but current IAVD status is "$current"', null, this);
+        }
+      }
       if (value.INP5 != null)
-        await sendCommand('INP5', value.INP5);
+        await sendCommand('INP5', argument: value.INP5);
       if (value.ITGD != null && value.ITGD > 0) {
         for (int index = 0; index < value.ITGD; index += 1) {
           await inputStable;
@@ -828,5 +911,139 @@ class Television {
       }
     }
   }
+
+  Future<int> get volume async {
+    final String response = await readValue('VOLM');
+    if (response == null)
+      return null;
+    try {
+      return int.parse(response, radix: 10);
+    } on FormatException {
+      throw new TelevisionException('Unknown response to "VOLM" message', response, this);
+    }
+  }
+
+  Future<Null> setVolume(int value) async {
+    assert(value >= 0);
+    assert(value <= 100);
+    await sendCommand('VOLM', argument: value.toString());
+  }
+
+  Future<bool> get muted async {
+    final String response = await readValue('MUTE');
+    if (response == null)
+      return null;
+    switch (response) {
+     case '1':
+       return true;
+     case '2':
+       return false;
+    }
+    throw new TelevisionException('Unknown response to "MUTE" message', response, this);
+  }
+
+  Future<Null> setMuted(bool value) async {
+    final String argument = value ? '1' : '2';
+    await sendCommand('MUTE', argument: argument);
+  }
+
+  Future<Null> toggleMuted() async {
+    await sendCommand('MUTE', argument: '0');
+  }
+
+  Future<int> get horizontalPosition async {
+    final String response = await readValue('HPOS');
+    if (response == null)
+      return null;
+    try {
+      return int.parse(response, radix: 10);
+    } on FormatException {
+      throw new TelevisionException('Unknown response to "HPOS" message', response, this);
+    }
+  }
+
+  Future<Null> setHorizontalPosition(int value) async {
+    assert(value >= -8);
+    assert(value <= 8);
+    await sendCommand('HPOS', argument: value.toString());
+  }
+
+  Future<int> get verticalPosition async {
+    final String response = await readValue('VPOS');
+    if (response == null)
+      return null;
+    try {
+      return int.parse(response, radix: 10);
+    } on FormatException {
+      throw new TelevisionException('Unknown response to "VPOS" message', response, this);
+    }
+  }
+
+  Future<Null> setVerticalPosition(int value) async {
+    assert(value >= -8);
+    assert(value <= 8);
+    await sendCommand('VPOS', argument: value.toString());
+  }
+
+
+  Future<int> get offTimer async {
+    final String response = await readValue('OFTM');
+    if (response == null)
+      return null;
+    try {
+      int result = int.parse(response, radix: 10);
+      if (result == 0)
+        return null;
+      return result;
+    } on FormatException {
+      throw new TelevisionException('Unknown response to "OFTM" message', response, this);
+    }
+  }
+
+  Future<Null> setOffTimer(TelevisionOffTimer value) async {
+    assert(value != null);
+    await sendCommand('OFTM', argument: value.index.toString());
+  }
+
+  Future<String> get name => readValue('TVNM', argument: '1');
+  Future<String> get model => readValue('MNRD', argument: '1');
+  Future<String> get softwareVersion => readValue('SWVN', argument: '1');
+
+  Future<Null> displayMessage(String value) async {
+    assert(value != null);
+    await sendCommand('KLCD', argument: value);
+  }
+
+  Future<bool> get demoOverlay async {
+    final String response = await readValue('DMSL');
+    if (response == null)
+      return null;
+    switch (response) {
+     case '0':
+       return false;
+     case '1':
+       return true;
+    }
+    throw new TelevisionException('Unknown response to "DMSL" message', response, this);
+  }
+
+  Future<Null> setDemoOverlay(bool value) async {
+    final String argument = value ? '1' : '0';
+    await sendCommand('DMSL', argument: argument);
+  }
+
+  // XXX AVMD - video mode
+  // XXX ACSU - surround sound mode
+  // XXX WIDE - stretch settings
+  // XXX RSPW - ?
+  // XXX ACHA - audio?
+  // XXX CLCP - closed captions
+  // XXX IPPV - ?
+  // XXX CHWD - TV+Web mode -- very unstable, can require hard reboot
+  // XXX GSEL - ?
+  // XXX KLCC - ?
+  // XXX RMDL - ?
+  // XXX DX2U - ?
+  // XXX SCPV - ?
 
 }

@@ -164,7 +164,7 @@ class CloudBit {
     } while (true);
   }
 
-  Stream<int> get values => new StreamView<int>(_valueStream);
+  static const Duration resendDelay = const Duration(seconds: 1);
 
   bool _sending = false;
   int _pendingSendValue;
@@ -201,7 +201,7 @@ class CloudBit {
         case 200:
           await response.drain();
           _pendingSendValue = null;
-          await new Future<Null>.delayed(const Duration(seconds: 1));
+          await new Future<Null>.delayed(resendDelay);
           break;
         default:
           await cloud._reportError(
@@ -245,10 +245,12 @@ class CloudBit {
   }
 
   StreamSubscription<dynamic> _events;
-  Timer _reconnectTimer;
   bool _active = false;
 
   static const Duration reconnectDuration = const Duration(seconds: 5);
+  static const Duration idleTimeout = const Duration(minutes: 5);
+
+  Stream<int> get values => new StreamView<int>(_valueStream);
 
   Future<Null> _start(Sink<int> sink) async {
     _active = true;
@@ -286,6 +288,7 @@ class CloudBit {
           _error(new CloudBitContractViolation('unexpected data from CloudBit stream: "$data"', this));
         },
       ))
+      .timeout(idleTimeout)
       .listen(
         (dynamic event) {
           if (event is! Map) {
@@ -326,6 +329,8 @@ class CloudBit {
               case 0: // disconnected
               case 1: // disconnecting
                 _emit(null);
+                // We're still connected to the cloud, so only report the error, don't
+                // call _error (which will disconnect and reconnect).
                 cloud._reportError(exception: new CloudBitNotConnected(this));
                 break;
               case 2: // connected
@@ -366,7 +371,6 @@ class CloudBit {
   }
 
   void _restart() {
-    _reconnectTimer = null;
     if (_active && _events == null)
       _start(_valueStream);
   }
@@ -375,8 +379,6 @@ class CloudBit {
     _active = false;
     _events?.cancel();
     _events = null;
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
   }
 
   void dispose() {
