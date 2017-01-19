@@ -1,7 +1,9 @@
 import 'dart:async';
 
-typedef Future<Null> ErrorHandler(dynamic error);
 typedef void VoidCallback();
+typedef void Logger(String message);
+typedef void StreamHandler<T>(T event);
+typedef Future<Null> ErrorHandler(dynamic error);
 
 abstract class StreamTransformerInstance<From, To> {
   bool handleData(From event, StreamSink<To> output);
@@ -59,4 +61,72 @@ class StreamTransformerBase<From, To> implements StreamTransformer<From, To> {
     );
     return output.stream;
   }
+}
+
+StreamTransformer<bool, bool> debouncer(Duration debounceDuration) {
+  return new StreamTransformer<bool, bool>(
+    (Stream<bool> input, bool cancelOnError) {
+      StreamController<bool> controller;
+      StreamSubscription<bool> subscription;
+      Timer timer;
+      bool lastSentValue;
+      bool lastReceivedValue;
+      controller = new StreamController<bool>(
+        onListen: () {
+          subscription = input.listen(
+            (bool value) {
+              if (value != lastReceivedValue) {
+                lastReceivedValue = value;
+                timer?.cancel();
+                if (value != lastSentValue) {
+                  timer = new Timer(debounceDuration, () {
+                    timer = null;
+                    // TODO(ianh): handle paused
+                    lastSentValue = lastReceivedValue;
+                    controller.add(lastReceivedValue);
+                  });
+                }
+              }
+            },
+            onError: controller.addError,
+            onDone: controller.close,
+            cancelOnError: cancelOnError,
+          );
+        },
+        onPause: () { subscription.pause(); },
+        onResume: () { subscription.resume(); },
+        onCancel: () {
+          timer?.cancel();
+          return subscription.cancel();
+        }
+      );
+      return controller.stream.listen(null);
+    }
+  );
+}
+
+final StreamTransformer<bool, bool> inverter = _inverter();
+StreamTransformer<bool, bool> _inverter() {
+  return new StreamTransformer<bool, bool>(
+    (Stream<bool> input, bool cancelOnError) {
+      StreamController<bool> controller;
+      StreamSubscription<bool> subscription;
+      controller = new StreamController<bool>(
+        onListen: () {
+          subscription = input.listen(
+            (bool value) {
+              controller.add(!value);
+            },
+            onError: controller.addError,
+            onDone: controller.close,
+            cancelOnError: cancelOnError,
+          );
+        },
+        onPause: () { subscription.pause(); },
+        onResume: () { subscription.resume(); },
+        onCancel: () => subscription.cancel(),
+      );
+      return controller.stream.listen(null);
+    }
+  );
 }

@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:meta/meta.dart';
 
 import 'common.dart';
+import 'watch_stream.dart';
 
 typedef void NotificationHandler(RemyNotification notification);
 typedef void UiUpdateHandler(RemyUi ui);
@@ -63,6 +65,8 @@ class Remy {
     this.onError,
     this.onNotification,
     this.onUiUpdate,
+    this.onConnected,
+    this.onDisconnected,
   }) {
     assert(port != null);
     _connect(host, port);
@@ -73,6 +77,8 @@ class Remy {
   final ErrorHandler onError;
   final NotificationHandler onNotification;
   final UiUpdateHandler onUiUpdate;
+  final VoidCallback onConnected;
+  final VoidCallback onDisconnected;
 
   Socket _server;
   bool _closed = false;
@@ -90,24 +96,46 @@ class Remy {
         }
         _server = await Socket.connect(host, port);
         _server.encoding = UTF8;
-        Stream<List<int>>_messages = _server.transform(_RemyMessageParser.getTransformer(3));
         if (onUiUpdate != null)
           _server.write('enable-ui\x00\x00\x00');
-        while (_pendingMessages.isNotEmpty)
-          _server.write(_pendingMessages.removeAt(0));
-        await for (List<int> bytes in _messages)
-          _handleMessage(bytes);
-        _server.destroy();
-        _server = null;
+        if (onConnected != null)
+          onConnected();
+        await Future.any(<Future<Null>>[
+          _listen(_server.transform(_RemyMessageParser.getTransformer(3))),
+          _writeLoop(),
+        ]);
+        throw new Exception('Remy connection closed');
       } catch (error) {
-        _server?.destroy();
-        _server = null;
+        _disconnect();
         if (onError != null)
           await onError(error);
       }
       await new Future<Null>.delayed(const Duration(seconds: 1));
     } while (!_closed);
   }
+
+  void _disconnect() {
+    if (_signalPendingMessage != null && !_signalPendingMessage.isCompleted)
+      _signalPendingMessage.complete(false);
+    _server?.destroy();
+    _server = null;
+    if (onDisconnected != null)
+      onDisconnected();
+  }
+
+  Future<Null> _listen(Stream<List<int>> messages) async {
+    await for (List<int> bytes in messages)
+      _handleMessage(bytes);
+    return null;
+  }
+
+  /// The last UI description received.
+  ///
+  /// This is initially null.
+  ///
+  /// This will remain null if [onUiUpdate] is null.
+  RemyUi get currentState => _currentState;
+  RemyUi _currentState;
 
   void _handleMessage(List<int> bytes) {
     if (bytes.length == 0) {
@@ -182,11 +210,12 @@ class Remy {
               onError(new Exception('unexpected data from remy: ${UTF8.decode(bytes)}'));
           }
         }
-        onUiUpdate(new RemyUi(
+        _currentState = new RemyUi(
           new Set<RemyButton>.from(buttons.values),
           messages,
           todos,
-        ));
+        );
+        onUiUpdate(currentState);
       }
     } else {
       final List<String> data = _nullSplit(parts[0], 1).map/*<String>*/(UTF8.decode).toList();
@@ -236,16 +265,33 @@ class Remy {
   }
 
   void pushButtonById(String name) {
-    final String message = '$username\x00$password\x00$name\x00\x00\x00';
-    if (_server != null) {
-      _server.write(message);
-    } else {
-      _pendingMessages.add(message);
-    }
+    _send('$username\x00$password\x00$name\x00\x00\x00');
   }
 
   void ping() {
-    _server?.write('\x00\x00\x00');
+    if (_pendingMessages.isEmpty && _server != null)
+      _send('\x00\x00\x00');
+  }
+
+  Completer<bool> _signalPendingMessage;
+
+  void _send(String message) {
+    _pendingMessages.add(message);
+    if (_signalPendingMessage != null && !_signalPendingMessage.isCompleted)
+      _signalPendingMessage.complete(true);
+  }
+
+  Future<Null> _writeLoop() async {
+    try {
+      do {
+        while (_pendingMessages.isNotEmpty)
+          _server.write(_pendingMessages.removeAt(0));
+        _signalPendingMessage = new Completer<bool>();
+        await _server.flush();
+      } while (await _signalPendingMessage.future);
+    } finally {
+      _signalPendingMessage = null;
+    }
   }
 
   void dispose() {
@@ -293,5 +339,75 @@ class _RemyMessageParser extends StreamTransformerInstance<List<int>, List<int>>
 
   @override
   void handleDone(StreamSink<List<int>> output) {
+  }
+}
+
+typedef void RemyLogCallback(String message);
+
+class RemyMultiplexer {
+  RemyMultiplexer(String username, String password, { this.onLog }) {
+    _remy = new Remy(
+      username: username,
+      password: password,
+      onUiUpdate: _handleUiUpdate,
+      onError: (dynamic error) async {
+        _log('$error');
+        return null;
+      },
+      onConnected: () {
+        _log('connected');
+      },
+      onDisconnected: () {
+        _log('disconnected');
+      },
+    );
+  }
+
+  final RemyLogCallback onLog;
+
+  Remy _remy;
+
+  final Map<String, WatchStream<bool>> _streams = <String, WatchStream<bool>>{};
+
+  Future<Null> get ready => _ready.future;
+  final Completer<Null> _ready = new Completer<Null>();
+
+  void _handleUiUpdate(RemyUi ui) {
+    if (!_ready.isCompleted)
+      _ready.complete();
+    Set<String> labels = new HashSet<String>.from(ui.messages.map((RemyNotification notification) => notification.label));
+    for (String label in labels)
+      getStreamForNotification(label).add(true);
+    for (String label in _streams.keys) {
+      if (!labels.contains(label))
+        _streams[label].add(false);
+    }
+  }
+
+  /// Returns the [WatchStream<bool>] for the on/off state of this particular notification.
+  ///
+  /// The first value may be null, meaning that the current state is unknown.
+  WatchStream<bool> getStreamForNotification(String label) {
+    return _streams.putIfAbsent(label, () {
+      WatchStream<bool> result = new AlwaysOnWatchStream<bool>();
+      if (_remy.currentState != null)
+        result.add(_remy.currentState.messages.any((RemyNotification notification) => notification.label == label));
+      return result;
+    });
+  }
+
+  bool hasNotification(String label) {
+    assert(_remy.currentState != null);
+    return _remy.currentState.messages.any((RemyNotification notification) => notification.label == label);
+  }
+
+  void pushButtonById(String name) {
+    _log('pushing button $name');
+    _remy.pushButtonById(name);
+  }
+
+  void _log(String message) {
+    if (onLog != null)
+      onLog(message);
   }
 }

@@ -10,7 +10,7 @@ typedef T ConversionHandler<String, T>(String value);
 const Duration _sunPowerPeriod = const Duration(seconds: 5);
 
 class SunPowerMonitor {
-  SunPowerMonitor({ this.customerId, this.onError }) {
+  SunPowerMonitor({ this.customerId, this.onError, Duration period: _sunPowerPeriod }) {
     _client = new HttpClient();
     _powerStream = new _UrlWatchStream<double>(_client, 'https://monitor.us.sunpower.com/CustomerPortal/CurrentPower/CurrentPower.svc/GetCurrentPower?id=$customerId', _sunPowerPeriod, _decodePower, onError);
   }
@@ -21,12 +21,16 @@ class SunPowerMonitor {
   final ErrorHandler onError;
 
   Stream<double> get power => _powerStream;
-  WatchStream<double> _powerStream;
+  _UrlWatchStream<double> _powerStream;
+
+  Duration get period => _powerStream?.period;
 
   double _decodePower(String value) {
     final dynamic payload = JSON.decode(value);
     if (payload is Map && payload['Payload'] is Map && payload['Payload']['CurrentProduction'] is double)
       return payload['Payload']['CurrentProduction'];
+    if (payload is Map && payload['StatusCode'] == '201' && payload['ResponseMessage'] == 'Failure')
+      throw new Exception('non-specific error received from SunPower servers');
     throw new Exception('unexpected data from SunPower servers: $value');
   }
 

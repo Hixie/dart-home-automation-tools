@@ -254,9 +254,15 @@ class CloudBit {
 
   Future<Null> _start(Sink<int> sink) async {
     _active = true;
-    final HttpClientRequest request = await cloud._httpClient.getUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/input'));
-    request.headers.set(HttpHeaders.AUTHORIZATION, cloud.authToken);
-    final HttpClientResponse response = await request.close();
+    HttpClientResponse response;
+    try {
+      final HttpClientRequest request = await cloud._httpClient.getUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/input'));
+      request.headers.set(HttpHeaders.AUTHORIZATION, cloud.authToken);
+      response = await request.close();
+    } catch (error) {
+      _error(error);
+    }
+    assert(response != null);
     switch (response.statusCode) {
       case 429:
         _error(new CloudBitRateLimitException(this), cloud.rateLimitDelay);
@@ -402,6 +408,10 @@ class BitDemultiplexer {
   final Map<int, WatchStream<bool>> _outputs = <int, WatchStream<bool>>{};
   final Set<int> _activeBits = new Set<int>();
 
+  /// Obtain a stream for the given bit, in the range 1..[bitCount].
+  ///
+  /// The bit with number [bitCount] is the high-order bit, 40 in the
+  /// cloudbit 0..99 range. Lower bits are 20, 10, and 5.
   Stream<bool> operator [](int bit) {
     assert(bit >= 1);
     assert(bit <= bitCount);
@@ -472,3 +482,32 @@ class TemperatureSensor extends Temperature {
   double get celsius => _valueIsF ? (fahrenheit - 32.0) * 5.0 / 9.0 : 100.0 * _value / 1023.0;
 }
 
+StreamHandler<int> getAverageValueLogger({
+  @required Logger log,
+  @required String name,
+  double slop: 1023.0 * 0.01, // 1% of total range
+  double reportingThreshold: 1023.0 * 0.001, // 0.1% of total range
+}) {
+  bool connected;
+  double average;
+  int countedValues;
+  return (int value) {
+    final bool lastConnected = connected;
+    connected = value != null;
+    if (connected != lastConnected)
+      log('${connected ? 'connected to' : 'disconnected from'} $name cloudbit');
+    if (value == null)
+      return;
+    if (average == null || (average - value.toDouble()).abs() > slop) {
+      log('cloudbit raw value $value, far outside previous average (${average?.toStringAsFixed(1)})');
+      average = value.toDouble();
+      countedValues = 1;
+    } else {
+      final double oldAverage = average;
+      average = (average * countedValues + value) / (countedValues.toDouble() + 1.0);
+      countedValues += 1;
+      if ((oldAverage - average).abs() > reportingThreshold)
+        log('cloudbit raw value $value, new average is ${average.toStringAsFixed(1)}');
+    }
+  };
+}
