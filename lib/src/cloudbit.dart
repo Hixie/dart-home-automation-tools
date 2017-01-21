@@ -244,6 +244,14 @@ class CloudBit {
     _sendValue((99.0 * value / 5.0).round(), duration);
   }
 
+  /// Set the cloudbit output value such that it will display `value`
+  /// on an o21 number bit in "volts" mode. Range is 0.0..5.0.
+  ///
+  /// See [setValue].
+  void setBooleanValue(bool value, { Duration duration }) {
+    _sendValue(value ? 1023 : 0, duration);
+  }
+
   StreamSubscription<dynamic> _events;
   bool _active = false;
 
