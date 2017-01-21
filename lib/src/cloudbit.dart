@@ -249,7 +249,7 @@ class CloudBit {
   ///
   /// See [setValue].
   void setBooleanValue(bool value, { Duration duration }) {
-    _sendValue(value ? 1023 : 0, duration);
+    _sendValue(value ? 99 : 0, duration);
   }
 
   StreamSubscription<dynamic> _events;
