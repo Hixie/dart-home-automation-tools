@@ -176,8 +176,9 @@ class CloudBit {
       return;
     _sending = true;
     do {
+      HttpClientRequest request;
       try {
-        final HttpClientRequest request = await cloud._httpClient.postUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/output'));
+        request = await cloud._httpClient.postUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/output'));
       } catch (exception) {
         await cloud._reportError(
           exception: exception,
