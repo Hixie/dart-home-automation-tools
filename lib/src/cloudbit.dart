@@ -176,7 +176,15 @@ class CloudBit {
       return;
     _sending = true;
     do {
-      final HttpClientRequest request = await cloud._httpClient.postUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/output'));
+      try {
+        final HttpClientRequest request = await cloud._httpClient.postUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/output'));
+      } catch (exception) {
+        await cloud._reportError(
+          exception: exception,
+          duration: cloud.noConnectionDelay,
+        );
+        break;
+      }
       request.headers.set(HttpHeaders.AUTHORIZATION, cloud.authToken);
       request.headers.contentType = new ContentType('application', 'json');
       request.headers.contentLength = -1;
