@@ -100,10 +100,12 @@ class Remy {
           _server.write('enable-ui\x00\x00\x00');
         if (onConnected != null)
           onConnected();
+        Timer keepAlive = new Timer.periodic(const Duration(seconds: 60), (Timer t) => ping());
         await Future.any(<Future<Null>>[
           _listen(_server.transform(_RemyMessageParser.getTransformer(3))),
           _writeLoop(),
         ]);
+        keepAlive.cancel();
         throw new Exception('Remy connection closed');
       } catch (error) {
         _disconnect();
@@ -284,6 +286,8 @@ class Remy {
   Future<Null> _writeLoop() async {
     try {
       do {
+        // TODO(ianh): Move pending messages into a list that waits for confirmation
+        // and brings them back into the pending list if not confirmed in a short time
         while (_pendingMessages.isNotEmpty)
           _server.write(_pendingMessages.removeAt(0));
         _signalPendingMessage = new Completer<bool>();
