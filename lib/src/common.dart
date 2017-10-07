@@ -5,6 +5,8 @@ typedef void Logger(String message);
 typedef void StreamHandler<T>(T event);
 typedef Future<Null> ErrorHandler(dynamic error);
 
+enum LogLevel { error, info, verbose }
+
 abstract class StreamTransformerInstance<From, To> {
   bool handleData(From event, StreamSink<To> output);
   bool handleError(dynamic exception, StackTrace stack, StreamSink<To> output) {

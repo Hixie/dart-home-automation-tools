@@ -8,12 +8,15 @@ import 'common.dart';
 import 'temperature.dart';
 import 'watch_stream.dart';
 
+typedef void LittleBitsLogger(String deviceId, String message);
+typedef String IdentifierCallback(String deviceId);
+
 class CloudBitException implements Exception {
   const CloudBitException(this.message, this.cloudbit);
   final String message;
   final CloudBit cloudbit;
   @override
-  String toString() => '$message (device ${cloudbit?.deviceId})';
+  String toString() => '$message (device ${cloudbit?.displayName})';
 }
 
 class CloudBitContractViolation extends CloudBitException {
@@ -28,17 +31,29 @@ class CloudBitNotConnected extends CloudBitException {
   const CloudBitNotConnected(CloudBit cloudbit) : super('cloudbit not connected', cloudbit);
 }
 
+class CloudBitConnectionFailure extends CloudBitException {
+  const CloudBitConnectionFailure(CloudBit cloudbit, Exception exception) : exception = exception, super('cloudbit connection failure ($exception)', cloudbit);
+  final Exception exception;
+}
+
 class LittleBitsCloud {
   LittleBitsCloud({
     @required this.authToken,
+    this.onIdentify,
     this.onError,
+    this.onLog,
   }) {
     _httpClient.userAgent = null;
+    _log(null, 'initialized littlebits cloud manager');
   }
 
   final String authToken;
 
+  final IdentifierCallback onIdentify;
+
   final ErrorHandler onError;
+
+  final LittleBitsLogger onLog;
 
   final Map<String, CloudBit> _devices = <String, CloudBit>{};
   final HttpClient _httpClient = new HttpClient();
@@ -53,10 +68,15 @@ class LittleBitsCloud {
   final Duration reconnectDelay = const Duration(seconds: 2);
 
   CloudBit getDevice(String deviceId) {
-    return _devices.putIfAbsent(deviceId, () => new CloudBit._(this, deviceId));
+    return _devices.putIfAbsent(deviceId, () {
+      final String name = onIdentify(deviceId);
+      _log(deviceId, 'adding "$name" to cloudbit library ($deviceId)', level: LogLevel.verbose);
+      return new CloudBit._(this, deviceId, name);
+    });
   }
 
   Stream<CloudBit> listDevices() async* {
+    _log(null, 'obtaining device list...');
     dynamic data;
     do {
       final HttpClientRequest request = await _httpClient.getUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices'));
@@ -65,13 +85,16 @@ class LittleBitsCloud {
       switch (response.statusCode) {
         case 429:
           await _reportError(exception: const CloudBitRateLimitException(), duration: rateLimitDelay);
+          await response.drain();
           continue;
         case 200:
           break;
         default:
+          await response.drain();
           throw new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})');
       }
       final String rawData = await response.transform(UTF8.decoder).single;
+      await response.drain();
       try {
         data = JSON.decode(rawData);
       } on FormatException {
@@ -81,6 +104,7 @@ class LittleBitsCloud {
         throw new CloudBitContractViolation('unexpected data received from littlebits cloud (not a list: "$data")');
       break;
     } while (true);
+    _log(null, 'device list obtained with ${data.length} device${ data.length == 1 ? "" : "s"}');
     for (dynamic device in data) {
       if (device is! Map)
         throw const CloudBitContractViolation('unexpected data received from littlebits cloud (not a list of objects)');
@@ -96,15 +120,18 @@ class LittleBitsCloud {
   Future<Null> _reportError({
     @required dynamic exception,
     Duration duration,
+    bool connected,
     void continuation(),
   }) {
     List<Future<Null>> prerequisites = <Future<Null>>[];
     if (duration != null)
       prerequisites.add(new Future<Null>.delayed(duration));
     if (onError != null) {
-      Future<Null> errorFuture = onError(exception);
-      if (errorFuture != null)
-        prerequisites.add(errorFuture);
+      if (connected || exception is! CloudBitNotConnected) {
+        Future<Null> errorFuture = onError(exception);
+        if (errorFuture != null)
+          prerequisites.add(errorFuture);
+      }
     }
     return Future.wait(prerequisites).then((List<Null> value) {
       if (continuation != null)
@@ -117,15 +144,21 @@ class LittleBitsCloud {
     for (CloudBit cloudbit in _devices.values)
       cloudbit.dispose();
   }
+
+  void _log(String deviceId, String message, { LogLevel level: LogLevel.info }) {
+    if (onLog != null && level.index <= LogLevel.info.index)
+      onLog(deviceId, message);
+  }
 }
 
 class CloudBit {
-  CloudBit._(this.cloud, this.deviceId) {
+  CloudBit._(this.cloud, this.deviceId, this.displayName) {
     _valueStream = new HandlerWatchStream<int>(_start, _end);
   }
 
   final LittleBitsCloud cloud;
   final String deviceId;
+  final String displayName;
 
   WatchStream<int> _valueStream;
 
@@ -140,13 +173,16 @@ class CloudBit {
             exception: new CloudBitRateLimitException(this),
             duration: cloud.rateLimitDelay,
           );
+          await response.drain();
           continue;
         case 200:
           break;
         default:
+          await response.drain();
           throw new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})', this);
       }
       final String rawData = await response.transform(UTF8.decoder).single;
+      await response.drain();
       dynamic device;
       try {
         device = JSON.decode(rawData);
@@ -171,6 +207,7 @@ class CloudBit {
   Future<Null> _sendValue(int value, Duration duration) async {
     assert(value >= 0);
     assert(value <= 99);
+    cloud._log(deviceId, '$displayName: sending $value${_sending ? " (previous send already in progress)" : ""}');
     _pendingSendValue = value;
     if (_sending)
       return;
@@ -181,7 +218,8 @@ class CloudBit {
         request = await cloud._httpClient.postUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/output'));
       } catch (exception) {
         await cloud._reportError(
-          exception: exception,
+          exception: new CloudBitConnectionFailure(this, exception),
+          connected: _connected,
           duration: cloud.noConnectionDelay,
         );
         break;
@@ -189,27 +227,34 @@ class CloudBit {
       request.headers.set(HttpHeaders.AUTHORIZATION, cloud.authToken);
       request.headers.contentType = new ContentType('application', 'json');
       request.headers.contentLength = -1;
+      int _sentValue = _pendingSendValue;
       request.write(JSON.encode(<String, int>{
         'percent': _pendingSendValue,
         'duration_ms': duration == null ? -1 : duration.inMilliseconds,
       }));
       final HttpClientResponse response = await request.close();
+      cloud._log(deviceId, '$displayName: when sending $_sentValue, got ${response?.statusCode}', level: LogLevel.verbose);
       switch (response.statusCode) {
         case 429:
           await cloud._reportError(
             exception: new CloudBitRateLimitException(this),
             duration: cloud.rateLimitDelay,
           );
+          await response.drain();
           break;
         case 404:
           await cloud._reportError(
             exception: new CloudBitNotConnected(this),
+            connected: _connected,
             duration: cloud.noConnectionDelay,
           );
+          await response.drain();
           break;
         case 200:
           await response.drain();
-          _pendingSendValue = null;
+          cloud._log(deviceId, '$displayName: sent $_pendingSendValue successfully!', level: LogLevel.verbose);
+          if (_sentValue == _pendingSendValue)
+            _pendingSendValue = null;
           await new Future<Null>.delayed(resendDelay);
           break;
         default:
@@ -217,6 +262,7 @@ class CloudBit {
             exception: new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})', this),
             duration: cloud.rateLimitDelay,
           );
+          await response.drain();
       }
     } while (_pendingSendValue != null);
     _sending = false;
@@ -271,28 +317,44 @@ class CloudBit {
 
   Future<Null> _start(Sink<int> sink) async {
     _active = true;
+    while (_active) {
+      cloud._log(deviceId, '$displayName: connecting...', level: LogLevel.verbose);
+      await _connect(sink);
+      cloud._log(deviceId, '$displayName: connection lost. (${_active ? "still active" : "now inactive anyway" })', level: LogLevel.verbose);
+    }
+    cloud._log(deviceId, '$displayName: disconnected, not active', level: LogLevel.verbose);
+  }
+
+  Future<Null> _connect(Sink<int> sink) async {
+    cloud._log(deviceId, '$displayName: attempting connection...', level: LogLevel.verbose);
     HttpClientResponse response;
     try {
       final HttpClientRequest request = await cloud._httpClient.getUrl(Uri.parse('https://api-http.littlebitscloud.cc/v2/devices/$deviceId/input'));
       request.headers.set(HttpHeaders.AUTHORIZATION, cloud.authToken);
       response = await request.close();
     } catch (error) {
-      _error(error);
+      cloud._log(deviceId, 'unexpected error: $error');
+      return _error(error);
     }
     assert(response != null);
     switch (response.statusCode) {
       case 429:
-        _error(new CloudBitRateLimitException(this), cloud.rateLimitDelay);
-        return;
+        cloud._log(deviceId, '$displayName: 429 rate-limit; delaying ${cloud.rateLimitDelay}', level: LogLevel.verbose);
+        await response.drain();
+        return _error(new CloudBitRateLimitException(this), cloud.rateLimitDelay);
       case 404:
-        _error(new CloudBitNotConnected(this), cloud.noConnectionDelay);
-        return;
+        cloud._log(deviceId, '$displayName: 404 not-connected; delaying ${cloud.noConnectionDelay}', level: LogLevel.verbose);
+        await response.drain();
+        return _error(new CloudBitNotConnected(this), cloud.noConnectionDelay);
       case 200:
+        cloud._log(deviceId, '$displayName: connected', level: LogLevel.verbose);
         break;
       default:
-        _error(new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})', this));
-        return;
+        cloud._log(deviceId, '$displayName: contract violation: $response');
+        await response.drain();
+        return _error(new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})', this));
     }
+    Completer<Null> completer = new Completer<Null>();
     _events = response
       .transform(UTF8.decoder)
       .transform(const LineSplitter())
@@ -308,109 +370,125 @@ class CloudBit {
               // absorb exception; we'll report it below
             }
           }
-          _error(new CloudBitContractViolation('unexpected data from CloudBit stream: "$data"', this));
+          completer.complete(_error(new CloudBitContractViolation('unexpected data from CloudBit stream: "$data"', this)));
         },
       ))
       .timeout(idleTimeout)
       .listen(
         (dynamic event) {
           if (event is! Map) {
-            _error(new CloudBitContractViolation('unexpected data received from littlebits cloud (not a map: "$event")', this));
+            completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud (not a map: "$event")', this)));
             return;
           }
           if (!event.containsKey('type')) {
-            _error(new CloudBitContractViolation('unexpected data received from littlebits cloud (event does not contain "type" value: "$event")', this));
+            completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud (event does not contain "type" value: "$event")', this)));
             return;
           }
           final dynamic type = event['type'];
           if (type is! String) {
-            _error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("type" value is not String: "$event")', this));
+            completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("type" value is not String: "$event")', this)));
             return;
           }
           if (type == 'input') {
             if (!event.containsKey('absolute')) {
-              _error(new CloudBitContractViolation('unexpected data received from littlebits cloud (input event does not contain "absolute" value: "$event")', this));
+              completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud (input event does not contain "absolute" value: "$event")', this)));
               return;
             }
             final dynamic value = event['absolute'];
             if (value is! int) {
-              _error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("absolute" value is not numeric: "$event")', this));
+              completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("absolute" value is not numeric: "$event")', this)));
               return;
             }
             _emit(value);
           } else if (type == 'connection_change') {
             if (!event.containsKey('state')) {
-              _error(new CloudBitContractViolation('unexpected data received from littlebits cloud (connection_change event does not contain "state" value: "$event")', this));
+              completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud (connection_change event does not contain "state" value: "$event")', this)));
               return;
             }
             final dynamic state = event['state'];
             if (state is! int) {
-              _error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("state" value is not numeric: "$event")', this));
+              completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("state" value is not numeric: "$event")', this)));
               return;
             }
             switch (state) {
               case 0: // disconnected
               case 1: // disconnecting
+                final bool wasConnected = _connected;
                 _emit(null);
                 // We're still connected to the cloud, so only report the error, don't
                 // call _error (which will disconnect and reconnect).
-                cloud._reportError(exception: new CloudBitNotConnected(this));
+                cloud._reportError(exception: new CloudBitNotConnected(this), connected: wasConnected);
+                assert(_connected == false);
                 break;
               case 2: // connected
                 break;
               default:
-                _error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("state" value out of range: "$event")', this));
+                completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud ("state" value out of range: "$event")', this)));
                 return;
             }
           } else {
-            _error(new CloudBitContractViolation('unexpected data received from littlebits cloud (unknown "type" value: "$event")', this));
+            completer.complete(_error(new CloudBitContractViolation('unexpected data received from littlebits cloud (unknown "type" value: "$event")', this)));
             return;
           }
         },
         onError: (dynamic exception, StackTrace stack) {
-          _error(exception);
+          cloud._log(deviceId, '$displayName: got exception from events stream: $exception');
+          completer.complete(_error(exception));
         },
         onDone: () {
-          _error(new CloudBitContractViolation('unexpectedly disconnected from littlebits cloud', this));
+          completer.complete(_error(new CloudBitContractViolation('unexpectedly disconnected from littlebits cloud', this)));
         },
       );
+    return completer.future;
   }
 
-  void _error(dynamic exception, [ Duration duration = reconnectDuration ]) {
+  Future<Null> _error(dynamic exception, [ Duration duration = reconnectDuration ]) async {
     // fatal error on socket, disconnect and try again after given duration
+    cloud._log(deviceId, '$displayName: reporting error "$exception" (${_active ? "still active" : "now inactive"})', level: LogLevel.verbose);
     assert(duration != null);
+    final bool wasConnected = _connected;
     _emit(null);
+    assert(!_connected);
     _events?.cancel();
     _events = null;
+    final Completer<Null> completer = new Completer<Null>();
     cloud._reportError(
       exception: exception,
       duration: duration,
-      continuation: _restart,
+      connected: wasConnected,
+      continuation: () {
+        cloud._log(deviceId, '$displayName: post-error continuation (${_active ? "still active" : "now inactive"})', level: LogLevel.verbose);
+        completer.complete();
+      },
     );
+    assert(!_connected);
+    return completer.future;
   }
 
+  bool _connected = false;
+
   void _emit(int value) {
+    if (_connected != (value != null))
+      cloud._log(deviceId, '$displayName: ${value == null ? "disconnected" : "connected"}', level: LogLevel.verbose);
+    _connected = value != null;
     _valueStream.add(value);
   }
 
-  void _restart() {
-    if (_active && _events == null)
-      _start(_valueStream);
-  }
-
   void _end() {
+    cloud._log(deviceId, '$displayName: disconnecting.', level: LogLevel.verbose);
     _active = false;
     _events?.cancel();
     _events = null;
   }
 
   void dispose() {
+    cloud._log(deviceId, '$displayName: disposing...', level: LogLevel.verbose);
     _end();
     _valueStream.close();
   }
 
   @override
-  String toString() => '$runtimeType($deviceId)';
+  String toString() => '$runtimeType($displayName, $deviceId)';
 }
 
 class BitDemultiplexer {
@@ -429,6 +507,9 @@ class BitDemultiplexer {
   ///
   /// The bit with number [bitCount] is the high-order bit, 40 in the
   /// cloudbit 0..99 range. Lower bits are 20, 10, and 5.
+  ///
+  /// The stream that you get here is always sent either true or false,
+  /// you don't have to check for null.
   Stream<bool> operator [](int bit) {
     assert(bit >= 1);
     assert(bit <= bitCount);

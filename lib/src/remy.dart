@@ -346,8 +346,6 @@ class _RemyMessageParser extends StreamTransformerInstance<List<int>, List<int>>
   }
 }
 
-typedef void RemyLogCallback(String message);
-
 class RemyMultiplexer {
   RemyMultiplexer(String username, String password, { this.onLog }) {
     _remy = new Remy(
@@ -367,7 +365,7 @@ class RemyMultiplexer {
     );
   }
 
-  final RemyLogCallback onLog;
+  final Logger onLog;
 
   Remy _remy;
 

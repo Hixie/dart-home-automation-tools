@@ -71,9 +71,11 @@ class _UrlWatchStream<T> extends WatchStream<T> {
           case 200:
             break;
           default:
+            await response.drain();
             throw new Exception('unexpected error from SunPower servers (${response.statusCode} ${response.reasonPhrase})');
         }
         add(parser(await response.transform(UTF8.decoder).single));
+        await response.drain();
       } catch (exception) {
         add(null);
         if (onError != null)
