@@ -204,7 +204,7 @@ class CloudBit {
 
   bool _sending = false;
   int _pendingSendValue;
-  Future<Null> _sendValue(int value, Duration duration, bool silent: false) async {
+  Future<Null> _sendValue(int value, Duration duration, { bool silent: false }) async {
     assert(value >= 0);
     assert(value <= 99);
     if (!silent)
