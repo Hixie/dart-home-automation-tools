@@ -32,7 +32,7 @@ class CloudBitNotConnected extends CloudBitException {
 }
 
 class CloudBitConnectionFailure extends CloudBitException {
-  const CloudBitConnectionFailure(CloudBit cloudbit, Exception exception) : exception = exception, super('cloudbit connection failure ($exception)', cloudbit);
+  CloudBitConnectionFailure(CloudBit cloudbit, Exception exception) : exception = exception, super('cloudbit connection failure ($exception)', cloudbit);
   final Exception exception;
 }
 
@@ -204,10 +204,11 @@ class CloudBit {
 
   bool _sending = false;
   int _pendingSendValue;
-  Future<Null> _sendValue(int value, Duration duration) async {
+  Future<Null> _sendValue(int value, Duration duration, bool silent: false) async {
     assert(value >= 0);
     assert(value <= 99);
-    cloud._log(deviceId, '$displayName: sending $value${_sending ? " (previous send already in progress)" : ""}');
+    if (!silent)
+      cloud._log(deviceId, '$displayName: sending $value${_sending ? " (previous send already in progress)" : ""}');
     _pendingSendValue = value;
     if (_sending)
       return;
@@ -252,7 +253,8 @@ class CloudBit {
           break;
         case 200:
           await response.drain();
-          cloud._log(deviceId, '$displayName: sent $_pendingSendValue successfully!', level: LogLevel.verbose);
+          if (!silent)
+            cloud._log(deviceId, '$displayName: sent $_pendingSendValue successfully!', level: LogLevel.verbose);
           if (_sentValue == _pendingSendValue)
             _pendingSendValue = null;
           await new Future<Null>.delayed(resendDelay);
@@ -273,38 +275,38 @@ class CloudBit {
   /// Setting the value (via this method or the others) is rate-limited
   /// to one per second. It is safe to call this at a higher rate; the
   /// extraneous calls are just silently dropped.
-  void setValue(int value, { Duration duration }) {
+  void setValue(int value, { Duration duration, bool silent: false }) {
     assert(value >= 0);
     assert(value <= 1023);
-    _sendValue(((value / 1023.0) * 99.0).round(), duration);
+    _sendValue(((value / 1023.0) * 99.0).round(), duration, silent: silent);
   }
 
   /// Set the cloudbit output value such that it will display `value`
   /// on an o21 number bit in "value" mode. Range is 0..99.
   ///
   /// See [setValue].
-  void setNumberValue(int value, { Duration duration }) {
+  void setNumberValue(int value, { Duration duration, bool silent: false }) {
     assert(value >= 0);
     assert(value <= 99);
-    _sendValue(value, duration);
+    _sendValue(value, duration, silent: silent);
   }
 
   /// Set the cloudbit output value such that it will display `value`
   /// on an o21 number bit in "volts" mode. Range is 0.0..5.0.
   ///
   /// See [setValue].
-  void setNumberVolts(double value, { Duration duration }) {
+  void setNumberVolts(double value, { Duration duration, bool silent: false }) {
     assert(value >= 0.0);
     assert(value <= 5.0);
-    _sendValue((99.0 * value / 5.0).round(), duration);
+    _sendValue((99.0 * value / 5.0).round(), duration, silent: silent);
   }
 
   /// Set the cloudbit output value such that it will display `value`
   /// on an o21 number bit in "volts" mode. Range is 0.0..5.0.
   ///
   /// See [setValue].
-  void setBooleanValue(bool value, { Duration duration }) {
-    _sendValue(value ? 99 : 0, duration);
+  void setBooleanValue(bool value, { Duration duration, bool silent: false }) {
+    _sendValue(value ? 99 : 0, duration, silent: silent);
   }
 
   StreamSubscription<dynamic> _events;
