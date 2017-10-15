@@ -26,15 +26,18 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import 'dart:convert' as dart show JSON;
+
+@proxy
 class Json {
   factory Json(dynamic input) {
     if (input is Json)
-      return wrap(input._value);
-    return wrap(input);
+      return _wrap(input._value);
+    return _wrap(input);
   }
 
   factory Json.list(List<dynamic> input) {
-    return new Json.raw(input.map<Json>(wrap).toList());
+    return new Json._raw(input.map<Json>(_wrap).toList());
   }
 
   // (This differs from "real" JSON in that we don't allow duplicate keys.)
@@ -43,57 +46,89 @@ class Json {
     input.forEach((dynamic key, dynamic value) {
       key = key.toString();
       assert(!values.containsKey(key), 'Json.map keys must be unique strings');
-      values[key] = wrap(value);
+      values[key] = _wrap(value);
     });
-    return new Json.raw(values);
+    return new Json._raw(values);
   }
 
-  const Json.raw(this._value);
+  const Json._raw(this._value);
+
+  static Json parse(String value) {
+    return new Json(dart.JSON.decode(value));
+  }
 
   final dynamic _value;
 
-  static Json wrap(dynamic value) {
-    if (value == null) {
-      return const Json.raw(null);
-    } else if (value is num) {
-      return new Json.raw(value.toDouble());
-    } else if (value is List) {
+  static Json _wrap(dynamic value) {
+    if (value == null)
+      return const Json._raw(null);
+    if (value is num)
+      return new Json._raw(value.toDouble());
+    if (value is List)
       return new Json.list(value);
-    } else if (value is Map) {
+    if (value is Map)
       return new Json.map(value);
-    } else if (value == true) {
-      return const Json.raw(true);
-    } else if (value == false) {
-      return const Json.raw(false);
-    } else if (value is Json) {
+    if (value == true)
+      return const Json._raw(true);
+    if (value == false)
+      return const Json._raw(false);
+    if (value is Json)
       return value;
-    }
-    return new Json.raw(value.toString());
+    return new Json._raw(value.toString());
   }
 
-  dynamic unwrap() {
+  dynamic _unwrap() {
+    if (_value is Map)
+      return toMap();
+    if (_value is List)
+      return toList();
+    return _value;
+  }
+
+  Type get valueType => _value.runtimeType;
+
+  Map<String, dynamic> toMap() {
+    final Map<String, dynamic> values = <String, dynamic>{};
     if (_value is Map) {
-      final Map<String, dynamic> values = <String, dynamic>{};
       _value.forEach((String key, Json value) {
-        values[key] = value.unwrap();
+        values[key] = value._unwrap();
       });
-      return values;
     } else if (_value is List) {
-      return _value.map<dynamic>((Json value) => value.unwrap()).toList();
+      for (int index = 0; index < _value.length; index += 1)
+        values[index.toString()] = _value[index]._unwrap();
     } else {
-      return _value;
+      values['0'] = _unwrap();
     }
+    return values;
+  }
+
+  List<dynamic> toList() {
+    if (_value is Map)
+      return _value.values.map<dynamic>((Json value) => value._unwrap()).toList();
+    if (_value is List)
+      return _value.map<dynamic>((Json value) => value._unwrap()).toList();
+    return <dynamic>[_unwrap()];
+  }
+
+  List<dynamic> asIterable() {
+    if (_value is Map)
+      return _value.values;
+    if (_value is List)
+      return _value;
+    return const <Json>[];
   }
 
   double toDouble() => _value as double;
+
+  int toInt() => (_value as double).toInt();
+
   bool toBoolean() => _value as bool;
+
   @override
   String toString() => _value.toString();
-  Type get valueType => _value.runtimeType;
 
   String toJson() {
-    // insert JSON serializer here
-    throw new Exception('not implemented');
+    return dart.JSON.encode(_unwrap());
   }
 
   dynamic operator [](dynamic key) {
@@ -101,7 +136,7 @@ class Json {
   }
 
   void operator []=(dynamic key, dynamic value) {
-    _value[key] = wrap(value);
+    _value[key] = _wrap(value);
   }
 
   @override

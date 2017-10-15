@@ -7,6 +7,22 @@ typedef Future<Null> ErrorHandler(dynamic error);
 
 enum LogLevel { error, info, verbose }
 
+T min<T extends Comparable<T>>(T a, T b) {
+  if (a == null)
+    return b;
+  if (b == null)
+    return a;
+  return a.compareTo(b) > 0 ? b : a;
+}
+
+T max<T extends Comparable<T>>(T a, T b) {
+  if (a == null)
+    return b;
+  if (b == null)
+    return a;
+  return a.compareTo(b) < 0 ? b : a;
+}
+
 abstract class StreamTransformerInstance<From, To> {
   bool handleData(From event, StreamSink<To> output);
   bool handleError(dynamic exception, StackTrace stack, StreamSink<To> output) {

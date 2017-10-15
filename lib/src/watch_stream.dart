@@ -36,16 +36,18 @@ abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
 
   T _value;
 
+  // return value is whether this changed the status
   @override
-  void add(T value) {
-    if (_value != value) {
-      _value = value;
-      // we take a local copy in case anyone tries to cancel themselves from inside their data handler
-      // (as might happen e.g. with someone using Stream.first)
-      final Set<_WatchStreamSubscription<T>> targets = new Set<_WatchStreamSubscription<T>>.from(_subscriptions);
-      for (_WatchStreamSubscription<T> subscription in targets)
-        subscription._sendValue();
-    }
+  bool add(T value) {
+    if (_value == value)
+      return false;
+    _value = value;
+    // we take a local copy in case anyone tries to cancel themselves from inside their data handler
+    // (as might happen e.g. with someone using Stream.first)
+    final Set<_WatchStreamSubscription<T>> targets = new Set<_WatchStreamSubscription<T>>.from(_subscriptions);
+    for (_WatchStreamSubscription<T> subscription in targets)
+      subscription._sendValue();
+    return true;
   }
 
   @override

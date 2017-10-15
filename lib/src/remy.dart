@@ -369,33 +369,55 @@ class RemyMultiplexer {
 
   Remy _remy;
 
-  final Map<String, WatchStream<bool>> _streams = <String, WatchStream<bool>>{};
+  final Map<String, WatchStream<bool>> _notificationStatuses = <String, WatchStream<bool>>{};
+  final Map<String, StreamController<String>> _notificationsWithArguments = <String, StreamController<String>>{};
 
   Future<Null> get ready => _ready.future;
   final Completer<Null> _ready = new Completer<Null>();
+
+  Set<String> _lastLabels = new Set<String>();
 
   void _handleUiUpdate(RemyUi ui) {
     if (!_ready.isCompleted)
       _ready.complete();
     Set<String> labels = new HashSet<String>.from(ui.messages.map((RemyNotification notification) => notification.label));
-    for (String label in labels)
-      getStreamForNotification(label).add(true);
-    for (String label in _streams.keys) {
-      if (!labels.contains(label))
-        _streams[label].add(false);
+    for (String label in _notificationStatuses.keys)
+      _notificationStatuses[label].add(labels.contains(label));
+    Set<String> labelPrefixes = new HashSet<String>.from(_notificationsWithArguments.keys);
+    for (String label in labels) {
+      if (_lastLabels.contains(label))
+        continue; // we only report new values
+      int spaceIndex = label.indexOf(' ');
+      if (spaceIndex <= 0)
+        continue;
+      String prefix = label.substring(0, spaceIndex);
+      if (labelPrefixes.contains(prefix)) 
+        _notificationsWithArguments[prefix].add(label.substring(spaceIndex + 1));
     }
+    _lastLabels = labels;
   }
 
   /// Returns the [WatchStream<bool>] for the on/off state of this particular notification.
   ///
   /// The first value may be null, meaning that the current state is unknown.
   WatchStream<bool> getStreamForNotification(String label) {
-    return _streams.putIfAbsent(label, () {
+    return _notificationStatuses.putIfAbsent(label, () {
       WatchStream<bool> result = new AlwaysOnWatchStream<bool>();
       if (_remy.currentState != null)
         result.add(_remy.currentState.messages.any((RemyNotification notification) => notification.label == label));
       return result;
     });
+  }
+
+  /// Returns the [Stream<String>] for the value of a notification of the form "label argument".
+  ///
+  /// Each time the notification fires, the argument is sent to the stream.
+  Stream<String> getStreamForNotificationWithArgument(String label) {
+    return _notificationsWithArguments.putIfAbsent(label, () {
+      return new StreamController<String>.broadcast(
+        onCancel: () => _notificationsWithArguments.remove(label),
+      );
+    }).stream;
   }
 
   bool hasNotification(String label) {

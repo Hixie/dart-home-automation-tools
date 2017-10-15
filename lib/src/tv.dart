@@ -15,7 +15,7 @@ const Duration _responseTimeout = const Duration(seconds: 30); // how long to wa
 const Duration _retryDelay = const Duration(milliseconds: 150); // how quickly to resend when retrying for an expected response
 const Duration _retryTimeout = const Duration(seconds: 40); // how long to keep retrying for the expected response
 
-const bool _debugDumpTraffic = true;
+const bool _debugDumpTraffic = false;
 
 String get _timestamp => new DateTime.now().toIso8601String().padRight(26, '0');
 
@@ -407,6 +407,7 @@ class TelevisionChannel {
   }
 
   final TelevisionSource source;
+
   final String POWR; // reported by TV, never sent by .fromSource or .tv constructors
   final String RDIN; // reported by TV, never sent to TV
   final String IDIN;
@@ -551,6 +552,8 @@ class Television {
   TelevisionTransaction _currentTransaction;
   Timer _inactivityTimer;
 
+  Future<Null> _connecting;
+
   Future<Null> _connect({
     Duration delay: _reconnectDelay,
     Duration timeout: _connectTimeout,
@@ -561,74 +564,83 @@ class Television {
         resetTimeout(_inactivityTimeout, 'Idle timeout after redundant connection request.');
       return null;
     }
-    assert(_responses == null);
-    assert(_currentTransaction == null);
-    assert(_inactivityTimer == null);
-    InternetAddress host = this.host;
-    if (host == null) {
-      final List<InternetAddress> hosts = await InternetAddress.lookup('tv.');
-      if (hosts.isEmpty)
-        throw new TelevisionException('Could not resolve TV in DNS', null, this);
-      host = hosts.first;
-    }
-    Socket socket;
-    StreamIterator<String> responses;
-    List<dynamic> errors;
-    bool canceled = false;
-    Timer timeoutTimer = new Timer(timeout, () {
-      canceled = true;
-    });
+    if (_connecting != null)
+      return _connecting;
+    Completer<Null> connectingCompleter = new Completer<Null>();
+    _connecting = connectingCompleter.future;
     try {
-      do {
-        try {
-          if (_debugDumpTraffic)
-            print('$_timestamp ---- CONNECTING ----');
-          socket = await Socket.connect(host, port);
-          socket.encoding = UTF8;
-          socket.write('$username\x0d$password\x0d');
-          await socket.flush();
-          responses = new StreamIterator<String>(socket.transform(UTF8.decoder).transform(const LineSplitter()));
-          await responses.moveNext();
-          if (responses.current != 'Login:')
-            throw new TelevisionException('Did not get login prompt from television', responses.current, this);
-          await responses.moveNext();
-          if (responses.current != 'Password:')
-            throw new TelevisionException('Did not get password prompt from television', responses.current, this);
-        } catch (error) {
-          if ((error is TelevisionException) ||
-              ((error is SocketException) && (error.osError.errorCode == 32))) { // broken pipe - they accepted the connection then closed it on us
-            errors ??= <dynamic>[];
-            errors.add(error);
-            socket?.destroy();
-            socket = null;
-            await new Future<Null>.delayed(delay); // too fast and it won't even open the socket
-          }
-        }
-      } while (socket == null && !canceled);
-    } finally {
-      timeoutTimer.cancel();
-    }
-    if (socket == null) {
-      assert(errors.isNotEmpty);
-      throw new TelevisionException(
-        'timed out trying to connect; '
-        'had ${errors.length} failure${ errors.length == 1 ? "" : "s" }, '
-        'first was: ${errors.first}',
-        null,
-        this,
-      );
-    }
-    _connectionStream.add(true);
-    _socket = socket;
-    _responses = responses;
-    _currentTransaction = null;
-    resetTimeout(_inactivityTimeout, 'Idle timeout after connection.');
-    _socket.done.whenComplete(() {
-      if (_socket == socket) {
-        assert(_responses == responses);
-        abort('Connection lost.');
+      assert(_responses == null);
+      assert(_currentTransaction == null);
+      assert(_inactivityTimer == null);
+      InternetAddress host = this.host;
+      if (host == null) {
+        final List<InternetAddress> hosts = await InternetAddress.lookup('tv.');
+        if (hosts.isEmpty)
+          throw new TelevisionException('Could not resolve TV in DNS', null, this);
+        host = hosts.first;
       }
-    });
+      Socket socket;
+      StreamIterator<String> responses;
+      List<dynamic> errors;
+      bool canceled = false;
+      Timer timeoutTimer = new Timer(timeout, () {
+        canceled = true;
+      });
+      try {
+        do {
+          try {
+            if (_debugDumpTraffic)
+              print('$_timestamp ---- CONNECTING ----');
+            socket = await Socket.connect(host, port);
+            socket.encoding = UTF8;
+            socket.write('$username\x0d$password\x0d');
+            await socket.flush();
+            responses = new StreamIterator<String>(socket.transform(UTF8.decoder).transform(const LineSplitter()));
+            await responses.moveNext();
+            if (responses.current != 'Login:')
+              throw new TelevisionException('Did not get login prompt from television', responses.current, this);
+            await responses.moveNext();
+            if (responses.current != 'Password:')
+              throw new TelevisionException('Did not get password prompt from television', responses.current, this);
+          } catch (error) {
+            if ((error is TelevisionException) ||
+                ((error is SocketException) && (error.osError.errorCode == 32))) { // broken pipe - they accepted the connection then closed it on us
+              errors ??= <dynamic>[];
+              errors.add(error);
+              socket?.destroy();
+              socket = null;
+              await new Future<Null>.delayed(delay); // too fast and it won't even open the socket
+            }
+          }
+        } while (socket == null && !canceled);
+      } finally {
+        timeoutTimer.cancel();
+      }
+      if (socket == null) {
+        assert(errors.isNotEmpty);
+        throw new TelevisionException(
+          'timed out trying to connect; '
+          'had ${errors.length} failure${ errors.length == 1 ? "" : "s" }, '
+          'first was: ${errors.first}',
+          null,
+          this,
+        );
+      }
+      _connectionStream.add(true);
+      _socket = socket;
+      _responses = responses;
+      _currentTransaction = null;
+      resetTimeout(_inactivityTimeout, 'Idle timeout after connection.');
+      _socket.done.whenComplete(() {
+        if (_socket == socket) {
+          assert(_responses == responses);
+          abort('Connection lost.');
+        }
+      });
+    } finally {
+      connectingCompleter.complete();
+      _connecting = null;
+    }
   }
 
   void resetTimeout(Duration duration, String message) {
@@ -838,7 +850,7 @@ class Television {
     final String IDIN = await readRawValue('IDIN');
     final String IAVD = await readRawValue('IAVD');
     final String INP5 = await readRawValue('INP5');
-    if ((RDIN.length > 0 && RDIN[0] == '0') || IDIN.length == 1) {
+    if ((RDIN.length != null && RDIN.length > 0 && RDIN[0] == '0') || (IDIN != null && IDIN.length == 1)) {
       return new TelevisionChannel.fromValues(
         POWR: POWR,
         RDIN: RDIN,
