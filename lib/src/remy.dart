@@ -365,7 +365,7 @@ class RemyMultiplexer {
     );
   }
 
-  final Logger onLog;
+  final LogCallback onLog;
 
   Remy _remy;
 

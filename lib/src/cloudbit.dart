@@ -8,7 +8,7 @@ import 'common.dart';
 import 'temperature.dart';
 import 'watch_stream.dart';
 
-typedef void LittleBitsLogger(String deviceId, String message);
+typedef void LittleBitsLogCallback(String deviceId, String message);
 typedef String IdentifierCallback(String deviceId);
 
 class CloudBitException implements Exception {
@@ -53,7 +53,7 @@ class LittleBitsCloud {
 
   final ErrorHandler onError;
 
-  final LittleBitsLogger onLog;
+  final LittleBitsLogCallback onLog;
 
   final Map<String, CloudBit> _devices = <String, CloudBit>{};
   final HttpClient _httpClient = new HttpClient();
@@ -583,7 +583,7 @@ class TemperatureSensor extends Temperature {
 }
 
 StreamHandler<int> getAverageValueLogger({
-  @required Logger log,
+  @required LogCallback log,
   @required String name,
   double slop: 1023.0 * 0.01, // 1% of total range
   double reportingThreshold: 1023.0 * 0.001, // 0.1% of total range

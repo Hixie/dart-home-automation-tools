@@ -1,7 +1,7 @@
 import 'dart:async';
 
 typedef void VoidCallback();
-typedef void Logger(String message);
+typedef void LogCallback(String message);
 typedef void StreamHandler<T>(T event);
 typedef Future<Null> ErrorHandler(dynamic error);
 
