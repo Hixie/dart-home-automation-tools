@@ -220,7 +220,7 @@ class Remy {
         onUiUpdate(currentState);
       }
     } else {
-      final List<String> data = _nullSplit(parts[0], 1).map/*<String>*/(UTF8.decode).toList();
+      final List<String> data = _nullSplit(parts[0], 1).map<String>(UTF8.decode).toList();
       if (data.length < 3) {
         if (onError != null)
           onError(new Exception('invalid data packet from Remy (insufficient data in notification packet): ${UTF8.decode(bytes)}'));
@@ -352,6 +352,7 @@ class RemyMultiplexer {
       username: username,
       password: password,
       onUiUpdate: _handleUiUpdate,
+      onNotification: _handleNotification,
       onError: (dynamic error) async {
         _log('$error');
         return null;
@@ -371,9 +372,12 @@ class RemyMultiplexer {
 
   final Map<String, WatchStream<bool>> _notificationStatuses = <String, WatchStream<bool>>{};
   final Map<String, StreamController<String>> _notificationsWithArguments = <String, StreamController<String>>{};
+  final StreamController<RemyNotification> _notifications = new StreamController<RemyNotification>.broadcast();
 
   Future<Null> get ready => _ready.future;
   final Completer<Null> _ready = new Completer<Null>();
+
+  Stream<RemyNotification> get notifications => _notifications.stream;
 
   Set<String> _lastLabels = new Set<String>();
 
@@ -395,6 +399,10 @@ class RemyMultiplexer {
         _notificationsWithArguments[prefix].add(label.substring(spaceIndex + 1));
     }
     _lastLabels = labels;
+  }
+
+  void _handleNotification(RemyNotification notification) {
+    _notifications.add(notification);
   }
 
   /// Returns the [WatchStream<bool>] for the on/off state of this particular notification.
