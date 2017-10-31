@@ -379,6 +379,8 @@ class RemyMultiplexer {
 
   Stream<RemyNotification> get notifications => _notifications.stream;
 
+  RemyUi get currentState => _remy.currentState;
+
   Set<String> _lastLabels = new Set<String>();
 
   void _handleUiUpdate(RemyUi ui) {
@@ -431,6 +433,11 @@ class RemyMultiplexer {
   bool hasNotification(String label) {
     assert(_remy.currentState != null);
     return _remy.currentState.messages.any((RemyNotification notification) => notification.label == label);
+  }
+
+  void pushButton(RemyButton button) {
+    _log('pushing button ${button.id}');
+    _remy.pushButton(button);
   }
 
   void pushButtonById(String name) {
