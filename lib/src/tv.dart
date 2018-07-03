@@ -3,15 +3,14 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
-import 'common.dart';
 import 'watch_stream.dart';
 
 // This is written for the Sharp LC-70UD27U TV.
 
 const Duration _reconnectDelay = const Duration(milliseconds: 750); // how quickly to reconnect
 const Duration _connectTimeout = const Duration(seconds: 10); // how long to try to connect for
-const Duration _inactivityTimeout = const Duration(seconds: 2); // how long to wait for no activity (including a response) before disconnecting
-const Duration _responseTimeout = const Duration(seconds: 30); // how long to wait for no activity (including a response) before disconnecting
+const Duration _inactivityTimeout = const Duration(seconds: 2); // how long to wait before disconnecting when idle
+const Duration _responseTimeout = const Duration(seconds: 10); // how long to wait for a response before giving up
 const Duration _retryDelay = const Duration(milliseconds: 150); // how quickly to resend when retrying for an expected response
 const Duration _retryTimeout = const Duration(seconds: 40); // how long to keep retrying for the expected response
 
@@ -34,12 +33,23 @@ class TelevisionException implements Exception {
   }
 }
 
+class TelevisionTimeout extends TelevisionException {
+  const TelevisionTimeout(String message, String response, Television television)
+    : super(message, response, television);
+}
+
+class TelevisionErrorResponse extends TelevisionException {
+  const TelevisionErrorResponse(String message, String response, Television television)
+    : super(message, response, television);
+}
+
 /// Created by [Television.openTransaction].
 class TelevisionTransaction {
   TelevisionTransaction._(this.television) {
     assert(television != null);
     assert(television._currentTransaction == null);
     television._currentTransaction = this;
+    _done.future.catchError((dynamic error) { }); // so that this future can be ignored without reporting uncaught errors
   }
 
   final Television television;
@@ -63,7 +73,7 @@ class TelevisionTransaction {
       throw _error;
     assert(television._currentTransaction == this);
     assert(!_done.isCompleted);
-    television.resetTimeout(_responseTimeout, 'Timed out awaiting response.');
+    television.resetTimeout(_responseTimeout, 'Timed out awaiting response');
     await television._responses.moveNext();
     if (_debugDumpTraffic)
       print('$_timestamp <== ${television._responses.current}');
@@ -89,7 +99,7 @@ class TelevisionTransaction {
     _error = error;
     _done.completeError(error);
     if (television._transactionQueue != null) {
-      while (television._transactionQueue.isNotEmpty) 
+      while (television._transactionQueue.isNotEmpty)
         television._transactionQueue.removeFirst().completeError(error);
     }
   }
@@ -610,6 +620,8 @@ class Television {
               socket?.destroy();
               socket = null;
               await new Future<Null>.delayed(delay); // too fast and it won't even open the socket
+            } else {
+              rethrow;
             }
           }
         } while (socket == null && !canceled);
@@ -618,7 +630,7 @@ class Television {
       }
       if (socket == null) {
         assert(errors.isNotEmpty);
-        throw new TelevisionException(
+        throw new TelevisionTimeout(
           'timed out trying to connect; '
           'had ${errors.length} failure${ errors.length == 1 ? "" : "s" }, '
           'first was: ${errors.first}',
@@ -645,15 +657,21 @@ class Television {
 
   void resetTimeout(Duration duration, String message) {
     _inactivityTimer?.cancel();
-    _inactivityTimer = new Timer(duration, aborter(message));
+    _inactivityTimer = new Timer(duration, () { abort(message, timeout: true); });
   }
 
   Set<AbortWatcher> _abortWatchers = new Set<AbortWatcher>();
 
-  void abort(String message) {
+  void abort(String message, { bool timeout: false }) {
     if (_debugDumpTraffic)
       print('$_timestamp ---- DISCONNECTING - $message ----');
-    _currentTransaction?._closeWithError(new TelevisionException(message, null, this));
+    TelevisionException error;
+    if (timeout) {
+      error = new TelevisionTimeout(message, null, this);
+    } else {
+      error = new TelevisionException(message, null, this);
+    }
+    _currentTransaction?._closeWithError(error);
     _currentTransaction = null;
     _socket.destroy();
     _socket = null;
@@ -664,10 +682,6 @@ class Television {
     _connectionStream.add(false);
     for (AbortWatcher callback in _abortWatchers.toList())
       callback(message);
-  }
-
-  VoidCallback aborter(String message) {
-    return () { abort(message); };
   }
 
   void dispose() {
@@ -718,7 +732,7 @@ class Television {
     if (errorIsOk && response == 'ERR')
       return false;
     if (response != 'OK')
-      throw new TelevisionException('Response to "$message$argument" was unexpectedly not "OK"', response, this);
+      throw new TelevisionErrorResponse('Response to "$message$argument" was unexpectedly not "OK"', response, this);
     return true;
   }
 
@@ -737,19 +751,28 @@ class Television {
   }) async {
     String canceled;
     Timer timeoutTimer = new Timer(timeout, () {
-      abort('Timed out awaiting desired response to "$message".');
+      abort('Timed out awaiting desired response to "$message"', timeout: true);
     });
     AbortWatcher handleAbort = (String message) { canceled = message; };
     _abortWatchers.add(handleAbort);
     try {
-      while (canceled == null && await readRawValue(message, argument) != desiredResponse)
+      while (canceled == null) {
+        try {
+          if (await readRawValue(message, argument) == desiredResponse)
+            break;
+        } on TelevisionTimeout {
+          // retry
+        } on TelevisionErrorResponse {
+          // retry
+        }
         await new Future<Null>.delayed(delay);
+      }
     } finally {
       timeoutTimer.cancel();
       _abortWatchers.remove(handleAbort);
     }
     if (canceled != null)
-      throw new TelevisionException(canceled, null, this);
+      throw new TelevisionTimeout(canceled, null, this);
   }
 
   Future<Null> nonErrorResponse(String message, {
@@ -760,19 +783,25 @@ class Television {
   }) async {
     String canceled;
     Timer timeoutTimer = new Timer(timeout, () {
-      abort('Timed out awaiting successful response to "$message".');
+      abort('Timed out awaiting successful response to "$message"', timeout: true);
     });
     AbortWatcher handleAbort = (String message) { canceled = message; };
     _abortWatchers.add(handleAbort);
     try {
       while (canceled == null) {
-        final TelevisionTransaction transaction = await sendMessage(message, argument);
-        String response = await transaction.readLine();
-        if (skipOk && response == 'OK')
-          response = await transaction.readLine();
-        transaction.close();
-        if (response != 'ERR')
-          break;
+        try {
+          final TelevisionTransaction transaction = await sendMessage(message, argument);
+          String response = await transaction.readLine();
+          if (skipOk && response == 'OK')
+            response = await transaction.readLine();
+          transaction.close();
+          if (response != 'ERR')
+            break;
+        } on TelevisionTimeout {
+          // retry
+        } on TelevisionErrorResponse {
+          // retry
+        }
         await new Future<Null>.delayed(delay);
       }
     } finally {
@@ -780,7 +809,7 @@ class Television {
       _abortWatchers.remove(handleAbort);
     }
     if (canceled != null)
-      throw new TelevisionException(canceled, null, this);
+      throw new TelevisionTimeout(canceled, null, this);
   }
 
   Future<String> readValue(String message, { String argument: '?', bool errorIsNull: true }) async {
@@ -788,7 +817,7 @@ class Television {
     if (response == 'ERR') {
       if (errorIsNull)
         return null;
-      throw new TelevisionException('Unexpected response to "$message$argument"', response, this);
+      throw new TelevisionErrorResponse('Unexpected response to "$message$argument"', response, this);
     }
     return response;
   }
@@ -805,12 +834,12 @@ class Television {
      case '1':
        return true;
     }
-    throw new TelevisionException('Unknown response to "POWR" message', response, this);
+    throw new TelevisionErrorResponse('Unknown response to "POWR" message', response, this);
   }
 
   Future<Null> setPower(bool value) async {
     final String argument = value ? '1' : '0';
-    await sendCommand('POWR', argument: argument);
+    await matchingResponse('POWR', argument: argument);
     await matchingResponse('POWR', desiredResponse: argument);
     if (value)
       await inputStable;
@@ -905,7 +934,7 @@ class Television {
         if (!result) {
           String current = await readRawValue('IAVD');
           if (current != value.IAVD)
-            throw new TelevisionException('Received error response to message "IAVD${value.IAVD}" but current IAVD status is "$current"', null, this);
+            throw new TelevisionErrorResponse('Received error response to message "IAVD${value.IAVD}" but current IAVD status is "$current"', null, this);
         }
       }
       if (value.INP5 != null)
@@ -931,7 +960,7 @@ class Television {
     try {
       return int.parse(response, radix: 10);
     } on FormatException {
-      throw new TelevisionException('Unknown response to "VOLM" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "VOLM" message', response, this);
     }
   }
 
@@ -951,7 +980,7 @@ class Television {
      case '2':
        return false;
     }
-    throw new TelevisionException('Unknown response to "MUTE" message', response, this);
+    throw new TelevisionErrorResponse('Unknown response to "MUTE" message', response, this);
   }
 
   Future<Null> setMuted(bool value) async {
@@ -970,7 +999,7 @@ class Television {
     try {
       return int.parse(response, radix: 10);
     } on FormatException {
-      throw new TelevisionException('Unknown response to "HPOS" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "HPOS" message', response, this);
     }
   }
 
@@ -987,7 +1016,7 @@ class Television {
     try {
       return int.parse(response, radix: 10);
     } on FormatException {
-      throw new TelevisionException('Unknown response to "VPOS" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "VPOS" message', response, this);
     }
   }
 
@@ -1008,7 +1037,7 @@ class Television {
         return null;
       return result;
     } on FormatException {
-      throw new TelevisionException('Unknown response to "OFTM" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "OFTM" message', response, this);
     }
   }
 
@@ -1036,7 +1065,7 @@ class Television {
      case '1':
        return true;
     }
-    throw new TelevisionException('Unknown response to "DMSL" message', response, this);
+    throw new TelevisionErrorResponse('Unknown response to "DMSL" message', response, this);
   }
 
   Future<Null> setDemoOverlay(bool value) async {
