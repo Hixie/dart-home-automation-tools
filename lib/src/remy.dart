@@ -59,7 +59,7 @@ class RemyUi {
 class Remy {
   Remy({
     InternetAddress host,
-    int port: 12549,
+    int port: 12649,
     @required this.username,
     @required this.password,
     this.onError,
@@ -89,12 +89,12 @@ class Remy {
     do {
       try {
         if (host == null) {
-          final List<InternetAddress> hosts = await InternetAddress.lookup('damowmow.com');
+          final List<InternetAddress> hosts = await InternetAddress.lookup('remy.rooves.house');
           if (hosts.isEmpty)
             throw new Exception('Cannot lookup Remy\'s internet address: no results');
           host = hosts.first;
         }
-        _server = await Socket.connect(host, port);
+        _server = await SecureSocket.connect(host, port);
         _server.encoding = UTF8;
         if (onUiUpdate != null)
           _server.write('enable-ui\x00\x00\x00');
