@@ -2,6 +2,8 @@ library home_automation_tools;
 
 export 'src/air_quality.dart';
 export 'src/cloudbit.dart';
+export 'src/cloudbit_cloud.dart';
+export 'src/cloudbit_local.dart';
 export 'src/common.dart';
 export 'src/hash_codes.dart';
 export 'src/json.dart';

@@ -4,6 +4,7 @@ typedef void VoidCallback();
 typedef void LogCallback(String message);
 typedef void StreamHandler<T>(T event);
 typedef Future<Null> ErrorHandler(dynamic error);
+typedef void DeviceLogCallback(String deviceId, String message);
 
 enum LogLevel { error, info, verbose }
 
