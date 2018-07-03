@@ -41,11 +41,11 @@ class UrlWatchStream<T> extends WatchStream<T> {
             await response.drain();
             throw new Exception('unexpected error from SunPower servers (${response.statusCode} ${response.reasonPhrase})');
         }
-        add(parser(await response.transform(UTF8.decoder).single));
+        add(parser(await response.transform(UTF8.decoder).join('')));
       } catch (exception) {
         add(null);
         if (onError != null)
-          await onError(exception);
+          await onError('$exception');
         else
           rethrow;
       }
