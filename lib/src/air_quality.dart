@@ -249,7 +249,8 @@ class AirQualityMonitor {
     assert(area != null);
     assert(apiKey != null);
     _client = new HttpClient();
-    _airStream = new UrlWatchStream<AirQuality>(_client, 'http://www.airnowapi.org/aq/data/?parameters=O3,PM25,PM10,CO,NO2,SO2&BBOX=$area&dataType=B&format=application/json&verbose=1&API_KEY=$apiKey', const Duration(minutes: 15), _decodeData, onError);
+    final String url = 'http://www.airnowapi.org/aq/data/?parameters=O3,PM25,PM10,CO,NO2,SO2&BBOX=$area&dataType=B&format=application/json&verbose=1&API_KEY=$apiKey';
+    _airStream = new UrlWatchStream<AirQuality>(_client, url, const Duration(minutes: 15), _decodeData, onError);
   }
 
   HttpClient _client;
