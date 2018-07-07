@@ -24,6 +24,14 @@ T max<T extends Comparable<T>>(T a, T b) {
   return a.compareTo(b) < 0 ? b : a;
 }
 
+class WrappedException implements Exception {
+  WrappedException(this.message, this.parent);
+  final String message;
+  final dynamic parent;
+  @override
+  String toString() => '$message: $parent';
+}
+
 abstract class StreamTransformerInstance<From, To> {
   bool handleData(From event, StreamSink<To> output);
   bool handleError(dynamic exception, StackTrace stack, StreamSink<To> output) {

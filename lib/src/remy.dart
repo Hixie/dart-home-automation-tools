@@ -62,7 +62,7 @@ class Remy {
     int port: 12649,
     @required this.username,
     @required this.password,
-    this.onError,
+    this.onLog,
     this.onNotification,
     this.onUiUpdate,
     this.onConnected,
@@ -74,14 +74,15 @@ class Remy {
 
   final String username;
   final String password;
-  final ErrorHandler onError;
+  final LogCallback onLog;
   final NotificationHandler onNotification;
   final UiUpdateHandler onUiUpdate;
   final VoidCallback onConnected;
   final VoidCallback onDisconnected;
 
   Socket _server;
-  bool _closed = false;
+  Completer<Null> _closed = new Completer<Null>();
+  Timer _keepAlive;
 
   final List<String> _pendingMessages = <String>[];
 
@@ -96,27 +97,34 @@ class Remy {
         }
         _server = await SecureSocket.connect(host, port);
         _server.encoding = UTF8;
-        if (onUiUpdate != null)
+        if (onUiUpdate != null) {
           _server.write('enable-ui\x00\x00\x00');
+          await _server.flush().catchError(
+            (dynamic error, StackTrace stack) => throw new Exception('could not connect to Remy'),
+            test: (dynamic error) => error is StateError,
+          );
+        }
         if (onConnected != null)
           onConnected();
-        Timer keepAlive = new Timer.periodic(const Duration(seconds: 60), (Timer t) => ping());
+        _keepAlive = new Timer.periodic(const Duration(seconds: 60), (Timer t) => ping());
         await Future.any(<Future<Null>>[
           _listen(_server.transform(_RemyMessageParser.getTransformer(3))),
           _writeLoop(),
+          _closed.future,
         ]);
-        keepAlive.cancel();
-        throw new Exception('Remy connection closed');
       } catch (error) {
-        _disconnect();
-        if (onError != null)
-          await onError(error);
+        if (onLog != null)
+          onLog('error listening to Remy: $error');
       }
-      await new Future<Null>.delayed(const Duration(seconds: 1));
-    } while (!_closed);
+      _disconnect();
+      if (!_closed.isCompleted)
+        await new Future<Null>.delayed(const Duration(seconds: 1));
+    } while (!_closed.isCompleted);
   }
 
   void _disconnect() {
+    _keepAlive?.cancel();
+    _keepAlive = null;
     if (_signalPendingMessage != null && !_signalPendingMessage.isCompleted)
       _signalPendingMessage.complete(false);
     _server?.destroy();
@@ -153,22 +161,22 @@ class Remy {
         for (List<int> entry in parts.skip(1)) {
           final List<String> data = _nullSplit(entry, 1).map/*<String>*/(UTF8.decode).toList();
           if (data.isEmpty) {
-            if (onError != null)
-              onError(new Exception('invalid data packet from Remy (has empty entry in UI update): ${UTF8.decode(bytes)}'));
+            if (onLog != null)
+              onLog('invalid data packet from Remy (has empty entry in UI update): ${UTF8.decode(bytes)}');
           } else if (data[0] == 'button') {
             if (data.length < 4) {
-              if (onError != null)
-                onError(new Exception('invalid data packet from Remy (insufficient data in button packet): ${UTF8.decode(bytes)}'));
+              if (onLog != null)
+                onLog('invalid data packet from Remy (insufficient data in button packet): ${UTF8.decode(bytes)}');
             } else if (buttons.containsKey(data[1])) {
-              if (onError != null)
-                onError(new Exception('received duplicate button ID'));
+              if (onLog != null)
+                onLog('received duplicate button ID');
             } else {
               buttons[data[1]] = new RemyButton(data[1], new Set<String>.from(data[2].split(' ')), data[3]);
             }
           } else if (data[0] == 'message') {
             if (data.length < 4) {
-              if (onError != null)
-                onError(new Exception('invalid data packet from Remy (insufficient data in message packet): ${UTF8.decode(bytes)}'));
+              if (onLog != null)
+                onLog('invalid data packet from Remy (insufficient data in message packet): ${UTF8.decode(bytes)}');
             } else {
               messages.add(new RemyMessage(
                 data[1],
@@ -176,23 +184,23 @@ class Remy {
                 int.parse(
                   data[3],
                   onError: (String source) {
-                    if (onError != null)
-                      onError(new Exception('unexpected "numeric" data from remy: $source'));
+                    if (onLog != null)
+                      onLog('unexpected "numeric" data from Remy: $source');
                   },
                 ),
                 data.sublist(4).map/*<RemyButton>*/((String id) {
                   if (buttons.containsKey(id))
                     return buttons[id];
-                  if (onError != null)
-                    onError(new Exception('unknown button ID in message "${data[1]}" from Remy: $id'));
+                  if (onLog != null)
+                    onLog('unknown button ID in message "${data[1]}" from Remy: $id');
                   return null;
                 }).where((RemyButton button) => button != null).toList(),
               ));
             }
           } else if (data[0] == 'todo') {
             if (data.length < 5) {
-              if (onError != null)
-                onError(new Exception('invalid data packet from Remy (insufficient data in todo packet): ${UTF8.decode(bytes)}'));
+              if (onLog != null)
+                onLog('invalid data packet from Remy (insufficient data in todo packet): ${UTF8.decode(bytes)}');
             } else {
               todos.add(new RemyToDo(
                 data[1],
@@ -201,15 +209,15 @@ class Remy {
                 int.parse(
                   data[4],
                   onError: (String source) {
-                    if (onError != null)
-                      onError(new Exception('unexpected "numeric" data from remy: $source'));
+                    if (onLog != null)
+                      onLog('unexpected "numeric" data from Remy: $source');
                   },
                 ),
               ));
             }
           } else {
-            if (onError != null)
-              onError(new Exception('unexpected data from remy: ${UTF8.decode(bytes)}'));
+            if (onLog != null)
+              onLog('unexpected data from Remy: ${UTF8.decode(bytes)}');
           }
         }
         _currentState = new RemyUi(
@@ -222,8 +230,8 @@ class Remy {
     } else {
       final List<String> data = _nullSplit(parts[0], 1).map<String>(UTF8.decode).toList();
       if (data.length < 3) {
-        if (onError != null)
-          onError(new Exception('invalid data packet from Remy (insufficient data in notification packet): ${UTF8.decode(bytes)}'));
+        if (onLog != null)
+          onLog('invalid data packet from Remy (insufficient data in notification packet): ${UTF8.decode(bytes)}');
       } else {
         if (onNotification != null) {
           onNotification(new RemyNotification(
@@ -232,8 +240,8 @@ class Remy {
             int.parse(
               data[0],
               onError: (String source) {
-                if (onError != null)
-                  onError(new Exception('unexpected "numeric" data from remy: $source'));
+                if (onLog != null)
+                  onLog('unexpected "numeric" data from Remy: $source');
               },
             ),
           ));
@@ -299,8 +307,7 @@ class Remy {
   }
 
   void dispose() {
-    _closed = true;
-    _server?.destroy();
+    _closed.complete();
   }
 }
 
@@ -353,10 +360,7 @@ class RemyMultiplexer {
       password: password,
       onUiUpdate: _handleUiUpdate,
       onNotification: _handleNotification,
-      onError: (dynamic error) async {
-        _log('$error');
-        return null;
-      },
+      onLog: _log,
       onConnected: () {
         _log('connected');
       },
@@ -397,7 +401,7 @@ class RemyMultiplexer {
       if (spaceIndex <= 0)
         continue;
       String prefix = label.substring(0, spaceIndex);
-      if (labelPrefixes.contains(prefix)) 
+      if (labelPrefixes.contains(prefix))
         _notificationsWithArguments[prefix].add(label.substring(spaceIndex + 1));
     }
     _lastLabels = labels;

@@ -7,7 +7,7 @@ import 'common.dart';
 import 'temperature.dart';
 import 'watch_stream.dart';
 
-enum LedColor { black, blue, green, teal, red, purple, yellow, white }
+enum LedColor { black, blue, red, purple, green, teal, yellow, white }
 
 class CloudBitException implements Exception {
   const CloudBitException(this.message, this.cloudbit);
@@ -64,7 +64,9 @@ abstract class CloudBit {
 
   void setLedColor(LedColor color);
 
+  /// The current value, in the range 0..1023.
   Stream<int> get values;
+
   Stream<bool> get button;
 
   void dispose();
@@ -189,7 +191,7 @@ StreamHandler<int> getAverageValueLogger({
   double reportingThreshold: 1023.0 * 0.001, // 0.1% of total range
   File diskLog,
 }) {
-  bool connected;
+  bool connected = false;
   double average;
   int countedValues;
   return (int value) {
