@@ -109,7 +109,7 @@ class _CloudBit extends CloudBit {
   void _sendValue(int value, { Duration duration, bool silent: false }) {
     _value = value.clamp(0x0000, 0xFFFF);
     if (!silent)
-      server.log(deviceId, '$displayName: sending ${_value.toRadixString(16).padLeft(4, "0")}${ duration != null ? " (${duration.inMilliseconds}ms)" : ""}');
+      server.log(deviceId, '$displayName: sending 0x${_value.toRadixString(16).padLeft(4, "0")}${ duration != null ? " (${duration.inMilliseconds}ms)" : ""}');
     scheduleMicrotask(_refreshValue);
     _resetTimer?.cancel();
     _resetTimer = null;
@@ -163,7 +163,7 @@ class _CloudBit extends CloudBit {
   @override
   void setValue(int value, { Duration duration, bool silent: false }) {
     assert(value != null);
-    _sendValue(((value * 0xFFFF) / 1023.0).round());
+    _sendValue(((value * 0xFFFF) / 1023.0).round(), duration: duration, silent: silent);
   }
 
   @override
