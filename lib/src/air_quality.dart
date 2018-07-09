@@ -245,17 +245,17 @@ class GeoBox {
 
 /// See https://docs.airnowapi.org/Data/query
 class AirQualityMonitor {
-  AirQualityMonitor({ @required GeoBox area, @required String apiKey, this.onError }) {
+  AirQualityMonitor({ @required GeoBox area, @required String apiKey, this.onLog }) {
     assert(area != null);
     assert(apiKey != null);
     _client = new HttpClient();
     final String url = 'http://www.airnowapi.org/aq/data/?parameters=O3,PM25,PM10,CO,NO2,SO2&BBOX=$area&dataType=B&format=application/json&verbose=1&API_KEY=$apiKey';
-    _airStream = new UrlWatchStream<AirQuality>(_client, url, const Duration(minutes: 15), _decodeData, onError);
+    _airStream = new UrlWatchStream<AirQuality>(_client, const Duration(minutes: 15), _decodeData, onLog, url: url);
   }
 
   HttpClient _client;
 
-  final ErrorHandler onError;
+  final LogCallback onLog;
 
   Stream<AirQuality> get value => _airStream;
   UrlWatchStream<AirQuality> _airStream;

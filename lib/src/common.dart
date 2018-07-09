@@ -24,14 +24,6 @@ T max<T extends Comparable<T>>(T a, T b) {
   return a.compareTo(b) < 0 ? b : a;
 }
 
-class WrappedException implements Exception {
-  WrappedException(this.message, this.parent);
-  final String message;
-  final dynamic parent;
-  @override
-  String toString() => '$message: $parent';
-}
-
 abstract class StreamTransformerInstance<From, To> {
   bool handleData(From event, StreamSink<To> output);
   bool handleError(dynamic exception, StackTrace stack, StreamSink<To> output) {
@@ -156,4 +148,53 @@ StreamTransformer<bool, bool> _inverter() {
       return controller.stream.listen(null);
     }
   );
+}
+
+String prettyDuration(Duration duration) {
+  int microseconds = duration.inMicroseconds;
+  int weeks = microseconds ~/ (1000 * 1000 * 60 * 60 * 24 * 7);
+  microseconds -= weeks * (1000 * 1000 * 60 * 60 * 24 * 7);
+  int days = microseconds ~/ (1000 * 1000 * 60 * 60 * 24);
+  microseconds -= days * (1000 * 1000 * 60 * 60 * 24);
+  int hours = microseconds ~/ (1000 * 1000 * 60 * 60);
+  microseconds -= hours * (1000 * 1000 * 60 * 60);
+  int minutes = microseconds ~/ (1000 * 1000 * 60);
+  microseconds -= minutes * (1000 * 1000 * 60);
+  int seconds = microseconds ~/ (1000 * 1000);
+  microseconds -= seconds * (1000 * 1000);
+  int milliseconds = microseconds ~/ (1000);
+  microseconds -= milliseconds * (1000);
+
+  if (weeks > 1 && days == 0 && hours == 0)
+    return '$weeks weeks';
+  if (weeks == 1 && days == 0 && hours == 0)
+    return 'one week';
+
+  if (days > 1 && hours == 0 && minutes == 0)
+    return '$days days';
+  if (days == 1 && hours == 0 && minutes == 0)
+    return 'one day';
+
+  if (hours > 1 && minutes == 0 && seconds == 0)
+    return '$hours hours';
+  if (hours == 1 && minutes == 0 && seconds == 0)
+    return 'one hour';
+
+  StringBuffer result = new StringBuffer();
+  if (weeks > 0)
+    result.write('${weeks}w ');
+  if (days > 0)
+    result.write('${days}d ');
+  if (hours > 0)
+    result.write('${hours}h ');
+  if (minutes > 0)
+    result.write('${minutes}m ');
+  if (seconds > 0)
+    result.write('${seconds}s ');
+  if (milliseconds > 0)
+    result.write('${milliseconds}ms ');
+  if (microseconds > 0)
+    result.write('${microseconds}µs ');
+
+  return result.toString().trimRight();
 }

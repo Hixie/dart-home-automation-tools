@@ -169,13 +169,13 @@ class _CloudBit extends CloudBit {
   @override
   void setNumberValue(int value, { Duration duration, bool silent: false }) {
     assert(value != null);
-    _sendValue(((value * 1023.0) / 99.0).round(), duration: duration, silent: silent);
+    _sendValue(((value * 0xFFFF) / 99.0).round(), duration: duration, silent: silent);
   }
 
   @override
   void setNumberVolts(double value, { Duration duration, bool silent: false }) {
     assert(value != null);
-    _sendValue(((value * 1023.0) / 5.0).round(), duration: duration, silent: silent);
+    _sendValue(((value * 0xFFFF) / 5.0).round(), duration: duration, silent: silent);
   }
 
   @override
