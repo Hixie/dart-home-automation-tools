@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:meta/meta.dart';
 
-import 'common.dart';
-import 'temperature.dart';
-import 'watch_stream.dart';
+import '../common.dart';
+import '../temperature.dart';
+import '../watch_stream.dart';
 
 enum LedColor { black, blue, red, purple, green, teal, yellow, white }
 

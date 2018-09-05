@@ -4,9 +4,9 @@ import 'dart:io';
 
 import 'package:meta/meta.dart';
 
+import '../common.dart';
+import '../watch_stream.dart';
 import 'cloudbit.dart';
-import 'common.dart';
-import 'watch_stream.dart';
 
 class CloudBitContractViolation extends CloudBitException {
   const CloudBitContractViolation(String message, [ CloudBit cloudbit ]) : super(message, cloudbit);

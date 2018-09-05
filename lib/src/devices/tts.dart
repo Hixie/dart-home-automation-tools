@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:meta/meta.dart';
 
-import 'common.dart';
+import '../common.dart';
 
 // This is written for the TTS server at http://software.hixie.ch/utilities/unix/home-tools/tts.dart
 

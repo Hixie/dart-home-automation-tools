@@ -5,8 +5,8 @@ import 'dart:io';
 
 import 'package:meta/meta.dart';
 
-import 'common.dart';
-import 'watch_stream.dart';
+import '../common.dart';
+import '../watch_stream.dart';
 
 typedef void NotificationHandler(RemyNotification notification);
 typedef void UiUpdateHandler(RemyUi ui);

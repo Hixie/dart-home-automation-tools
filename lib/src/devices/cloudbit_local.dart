@@ -5,9 +5,9 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
-import 'common.dart';
+import '../common.dart';
+import '../watch_stream.dart';
 import 'cloudbit.dart';
-import 'watch_stream.dart';
 
 class LocalCloudBitDeviceDescription {
   const LocalCloudBitDeviceDescription(this.displayName, this.hostname);

@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
-import 'watch_stream.dart';
+import '../watch_stream.dart';
 
 // This is written for the Sharp LC-70UD27U TV.
 

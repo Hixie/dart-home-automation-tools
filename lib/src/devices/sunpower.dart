@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'common.dart';
-import 'url_watch_stream.dart';
-import 'json.dart';
+import '../common.dart';
+import '../url_watch_stream.dart';
+import '../json.dart';
 
 const Duration _sunPowerPeriod = const Duration(seconds: 10);
 const Duration _sunPowerMargin = const Duration(seconds: 5);

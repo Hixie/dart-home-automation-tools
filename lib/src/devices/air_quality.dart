@@ -4,10 +4,10 @@ import 'dart:io';
 
 import 'package:meta/meta.dart';
 
-import 'common.dart';
-import 'hash_codes.dart';
-import 'json.dart';
-import 'url_watch_stream.dart';
+import '../common.dart';
+import '../hash_codes.dart';
+import '../json.dart';
+import '../url_watch_stream.dart';
 
 class AirQualityStation {
   const AirQualityStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode });
