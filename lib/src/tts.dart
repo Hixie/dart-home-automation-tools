@@ -24,13 +24,17 @@ class TextToSpeechServer {
   WebSocket _connection;
   Future<WebSocket> _connectionProgress;
   int _messageIndex = 0;
-  Future<WebSocket> _connect() async {
+  Future<WebSocket> _connect({ Duration timeout }) async {
     if (_connection != null)
       return _connection;
     if (_connectionProgress != null)
       return _connectionProgress;
     Completer<WebSocket> completer;
+    Stopwatch stopwatch = new Stopwatch()
+      ..start();
     do {
+      if (stopwatch.elapsed >= timeout)
+        return;
       try {
         completer = new Completer<WebSocket>();
         _connectionProgress = completer.future;
@@ -71,7 +75,7 @@ class TextToSpeechServer {
   Future<Null> _send(String message, { Duration timeout: kMaxLatency }) async {
     Stopwatch stopwatch = new Stopwatch()
       ..start();
-    WebSocket socket = await _connect();
+    WebSocket socket = await _connect(timeout: kMaxLatency);
     if (stopwatch.elapsed >= timeout)
       return;
     _messageIndex += 1;

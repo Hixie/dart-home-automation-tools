@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:meta/meta.dart';
 
 import 'common.dart';
 import 'cloudbit.dart';
@@ -17,7 +20,6 @@ typedef LocalCloudBitDeviceDescription LocalHostIdentifier(String deviceId);
 class LittleBitsLocalServer extends CloudBitProvider {
   LittleBitsLocalServer({
     this.onIdentify,
-    this.onError,
     DeviceLogCallback onLog,
   }) : super(
     onLog: onLog,
@@ -26,9 +28,8 @@ class LittleBitsLocalServer extends CloudBitProvider {
   }
 
   final LocalHostIdentifier onIdentify;
-  final ErrorHandler onError;
 
-  final Map<String, _CloudBit> _devices = <String, _CloudBit>{};
+  final Map<String, Localbit> _devices = <String, Localbit>{};
   RawDatagramSocket _socket;
   Completer<Null> _ready = new Completer<Null>();
 
@@ -44,16 +45,16 @@ class LittleBitsLocalServer extends CloudBitProvider {
     Datagram d = _socket.receive();
     if (d == null)
       return;
-    for (_CloudBit cloudbit in _devices.values)
+    for (Localbit cloudbit in _devices.values)
       cloudbit._listener(d);
   }
 
   @override
   Future<CloudBit> getDevice(String deviceId) async {
-    final _CloudBit cloudbit = _devices.putIfAbsent(deviceId, () {
+    final Localbit cloudbit = _devices.putIfAbsent(deviceId, () {
       LocalCloudBitDeviceDescription description = onIdentify(deviceId);
       log(deviceId, 'adding "${description.displayName}" to cloudbit library ($deviceId, ${description.hostname})', level: LogLevel.verbose);
-      return new _CloudBit._(this, deviceId, description.displayName, description.hostname);
+      return new Localbit._(this, deviceId, description.displayName, description.hostname);
     });
     return _ready.future.then((Null value) => cloudbit);
   }
@@ -61,13 +62,13 @@ class LittleBitsLocalServer extends CloudBitProvider {
   @override
   void dispose() {
     _socket.close();
-    for (_CloudBit cloudbit in _devices.values)
+    for (Localbit cloudbit in _devices.values)
       cloudbit.dispose();
   }
 }
 
-class _CloudBit extends CloudBit {
-  _CloudBit._(this.server, this.deviceId, this.displayName, this.hostname) : _macAddressBytes = _parseMac(deviceId);
+class Localbit extends CloudBit {
+  Localbit._(this.server, this.deviceId, this.displayName, this.hostname) : _macAddressBytes = _parseMac(deviceId);
 
   final LittleBitsLocalServer server;
 
@@ -130,17 +131,10 @@ class _CloudBit extends CloudBit {
     if (_refreshTimer == null)
       _refreshTimer = new Timer.periodic(const Duration(minutes: 1), (Timer timer ) { _refreshValue(); });
     try {
-      List<InternetAddress> hosts = await InternetAddress.lookup(hostname, type: InternetAddressType.IP_V4)
-        .timeout(const Duration(seconds: 30));
-      if (hosts.isEmpty) {
-        server.log(deviceId, '$displayName: failed to resolve "$hostname"');
-        return;
-      }
       Uint8List buffer = new Uint8List(6 + 2 + 2);
-      buffer.setRange(0, _macAddressBytes.length, _macAddressBytes);
       buffer[6] = _color != null ? 0x80 | _color : 0x00; // LED
       if (_value != null) {
-        buffer[7] = 0x80; // Set Value
+        buffer[7] = 0x80; // value mode
         buffer[8] = (_value >> 8) & 0xFF;
         buffer[9] = _value & 0xFF;
       } else {
@@ -148,9 +142,31 @@ class _CloudBit extends CloudBit {
         buffer[8] = 0x00;
         buffer[9] = 0x00;
       }
-      server._socket.send(buffer, hosts.first, 2021);
+      await _addMacAndTransmit(buffer);
     } finally {
       _sending = false;
+    }
+  }
+
+  Future<Null> _addMacAndTransmit(Uint8List buffer) async {
+    try {
+      List<InternetAddress> hosts = await InternetAddress.lookup(hostname, type: InternetAddressType.IP_V4)
+        .timeout(const Duration(seconds: 30));
+      if (hosts.isEmpty) {
+        server.log(deviceId, '$displayName: failed to resolve "$hostname"');
+        return;
+      }
+      assert(buffer.length >= 6);
+      assert(buffer[0] == 0x00);
+      assert(buffer[1] == 0x00);
+      assert(buffer[2] == 0x00);
+      assert(buffer[3] == 0x00);
+      assert(buffer[4] == 0x00);
+      assert(buffer[5] == 0x00);
+      buffer.setRange(0, _macAddressBytes.length, _macAddressBytes);
+      server._socket.send(buffer, hosts.first, 2021);
+    } catch (exception) {
+      server.log(deviceId, '$displayName: failed to send message to "$hostname": $exception');
     }
   }
 
@@ -192,6 +208,70 @@ class _CloudBit extends CloudBit {
     scheduleMicrotask(_refreshValue);
   }
 
+  Uint8List _concatenate(Uint8List list1, Uint8List list2, [ Uint8List list3 ]) {
+    int newLength = list1.length + list2.length;
+    if (list3 != null)
+      newLength += list3.length;
+    Uint8List result = new Uint8List(newLength);
+    result.setRange(0, list1.length, list1);
+    result.setRange(list1.length, list1.length + list2.length, list2);
+    if (list3 != null)
+      result.setRange(list1.length + list2.length, list1.length + list2.length + list3.length, list3);
+    return result;
+  }
+
+  // SERIAL OUTPUT (LOCALBIT ONLY)
+
+  void sendSerialData(Uint8List message) {
+    assert(message != null);
+    assert(message.length <= 260);
+    server.log(deviceId, '$displayName: sending ${message.length} byte serial data message', level: LogLevel.verbose);
+    Uint8List header = new Uint8List(6 + 2 + 2);
+    header[6] = _color != null ? 0x80 | _color : 0x00; // LED
+    header[7] = 0x40; // serial data mode
+    header[8] = (message.length >> 8) & 0xFF;
+    header[9] = message.length & 0xFF;
+    _value = 0xFFFF;
+    _addMacAndTransmit(_concatenate(header, message));
+  }
+
+  void sendLEDMatrixMessage(MatrixMessageType messageType, MatrixPresentation presentation, Uint8List data) {
+    assert(messageType != null);
+    assert(presentation != null);
+    assert(data.length < 256);
+    Uint8List preamble = new Uint8List(4);
+    preamble[0] = 0x1C;
+    preamble[1] = messageType.asByte();
+    preamble[2] = presentation.asByte();
+    preamble[3] = data.length;
+    Uint8List postamble = new Uint8List(1);
+    postamble[0] = 0x26;
+    sendSerialData(_concatenate(preamble, data, postamble));
+  }
+
+  void sendText(String message, { int color: 0xFF, int scrollOffset: 0, MatrixPresentation presentation: MatrixPresentation.one }) {
+    assert(message != null);
+    assert(message.length < 256 - 3);
+    assert(color != null);
+    assert(color >= 0x00);
+    assert(color <= 0xFF);
+    assert(scrollOffset != null);
+    assert(scrollOffset >= 0x0000);
+    assert(scrollOffset <= 0xFFFF);
+    assert(presentation != null);
+    Uint8List payload = new Uint8List(3);
+    payload[0] = color;
+    payload[1] = (scrollOffset >> 8) & 0xFF;
+    payload[2] = scrollOffset & 0xFF;
+    sendLEDMatrixMessage(MatrixMessageType.text, presentation, _concatenate(payload, ASCII.encode(message)));
+  }
+
+  void sendImage(MatrixBitmap image, { MatrixPresentation presentation: MatrixPresentation.one }) {
+    assert(image != null);
+    assert(presentation != null);
+    sendLEDMatrixMessage(MatrixMessageType.image, presentation, image.asBytes());
+  }
+
   WatchStream<int> _valuesStream = new AlwaysOnWatchStream<int>();
   WatchStream<bool> _buttonStream = new AlwaysOnWatchStream<bool>();
 
@@ -207,5 +287,149 @@ class _CloudBit extends CloudBit {
     _resetTimer?.cancel();
     _valuesStream.close();
     _buttonStream.close();
+  }
+}
+
+class MatrixMessageType {
+  MatrixMessageType(this.id) {
+    assert(id != null);
+    assert(id == 0x00 || id == 0x01);
+  }
+
+  MatrixMessageType.experimental(this.id) {
+    assert(id != null);
+    assert(id >= 0x00);
+    assert(id <= 0xFF);
+  }
+
+  const MatrixMessageType._(this.id);
+
+  static const MatrixMessageType image = const MatrixMessageType._(0x00);
+
+  static const MatrixMessageType text = const MatrixMessageType._(0x01);
+
+  final int id;
+
+  int asByte() => id;
+}
+
+class MatrixPresentation {
+  MatrixPresentation({
+    @required this.channelCount,
+    this.channel1: false,
+    this.channel2: false,
+    this.channel3: false,
+    this.channel4: false,
+  }) {
+    assert(channelCount != null);
+    assert(channelCount > 0);
+    assert(channelCount <= 4);
+    assert(channel1 != null);
+    assert(channel2 != null);
+    assert(channel3 != null);
+    assert(channel4 != null);
+  }
+
+  MatrixPresentation.experimental({
+    @required this.channelCount,
+    this.channel1: false,
+    this.channel2: false,
+    this.channel3: false,
+    this.channel4: false,
+  }) {
+    assert(channelCount != null);
+    assert(channelCount >= 0x0);
+    assert(channelCount <= 0xF);
+    assert(channel1 != null);
+    assert(channel2 != null);
+    assert(channel3 != null);
+    assert(channel4 != null);
+  }
+
+  const MatrixPresentation._({
+    @required this.channelCount,
+    this.channel1: false,
+    this.channel2: false,
+    this.channel3: false,
+    this.channel4: false,
+  });
+
+  static const MatrixPresentation one = const MatrixPresentation._(channelCount: 1, channel1: true);
+
+  final int channelCount;
+
+  final bool channel1;
+
+  final bool channel2;
+
+  final bool channel3;
+
+  final bool channel4;
+
+  int asByte() {
+    return (channelCount << 4) +
+           (channel4 ? 0x08 : 0x00) +
+           (channel3 ? 0x04 : 0x00) +
+           (channel2 ? 0x02 : 0x00) +
+           (channel1 ? 0x01 : 0x00);
+  }
+}
+
+class MatrixBitmap {
+  MatrixBitmap(this.data) {
+    assert(data != null);
+    assert(data.length == 64);
+  }
+
+  MatrixBitmap.fromList(List<int> pixels) : data = new Uint8List.fromList(pixels) {
+    assert(pixels != null);
+    assert(pixels.length == 64);
+  }
+
+  MatrixBitmap.fillColor(int color) : data = new Uint8List(64)..fillRange(0, 64, color) {
+    assert(color != null);
+    assert(color >= 0x00);
+    assert(color <= 0xFF);
+  }
+
+  MatrixBitmap.black() : data = new Uint8List(64);
+
+  final Uint8List data;
+
+  Uint8List asBytes() => data;
+
+  void drawRect(int left, int top, int width, int height, int color) {
+    assert(left != null);
+    assert(left >= 0);
+    assert(left < 8);
+    assert(top != null);
+    assert(top >= 0);
+    assert(top < 8);
+    assert(width != null);
+    assert(width > 0);
+    assert(left + width >= 0);
+    assert(left + width < 8);
+    assert(height != null);
+    assert(height > 0);
+    assert(top + height >= 0);
+    assert(top + height < 8);
+    assert(color != null);
+    assert(color >= 0x00);
+    assert(color <= 0xFF);
+    for (int y = top; y < top + height; y += 1)
+      data.fillRange(y * 8 + left, y * 8 + left + width, color);
+  }
+
+  void drawPoint(int x, int y, int color) {
+    assert(x != null);
+    assert(x >= 0);
+    assert(x < 8);
+    assert(y != null);
+    assert(y >= 0);
+    assert(y < 8);
+    assert(color != null);
+    assert(color >= 0x00);
+    assert(color <= 0xFF);
+    data[y * 8 + x] = color;
   }
 }

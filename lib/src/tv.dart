@@ -584,10 +584,14 @@ class Television {
       assert(_inactivityTimer == null);
       InternetAddress host = this.host;
       if (host == null) {
-        final List<InternetAddress> hosts = await InternetAddress.lookup('tv.');
-        if (hosts.isEmpty)
+        try {
+          final List<InternetAddress> hosts = await InternetAddress.lookup('tv.');
+          if (hosts.isEmpty)
+            throw new TelevisionException('Could not resolve TV in DNS', null, this);
+          host = hosts.first;
+        } on SocketException {
           throw new TelevisionException('Could not resolve TV in DNS', null, this);
-        host = hosts.first;
+        }
       }
       Socket socket;
       StreamIterator<String> responses;
@@ -726,13 +730,19 @@ class Television {
   /// Returns true on success. If `errorIsOk` is true, returns false on an `ERR`
   /// response. Otherwise, throws on error.
   Future<bool> sendCommand(String message, { String argument = '', bool errorIsOk: false }) async {
-    final TelevisionTransaction transaction = await sendMessage(message, argument);
-    final String response = await transaction.readLine();
-    transaction.close();
-    if (errorIsOk && response == 'ERR')
-      return false;
-    if (response != 'OK')
-      throw new TelevisionErrorResponse('Response to "$message$argument" was unexpectedly not "OK"', response, this);
+    try {
+      final TelevisionTransaction transaction = await sendMessage(message, argument);
+      final String response = await transaction.readLine();
+      transaction.close();
+      if (errorIsOk && response == 'ERR')
+        return false;
+      if (response != 'OK')
+        throw new TelevisionErrorResponse('Response to "$message$argument" was unexpectedly not "OK"', response, this);
+    } on TelevisionException {
+      if (errorIsOk)
+        return false;
+      rethrow;
+    }
     return true;
   }
 
@@ -760,9 +770,7 @@ class Television {
         try {
           if (await readRawValue(message, argument) == desiredResponse)
             break;
-        } on TelevisionTimeout {
-          // retry
-        } on TelevisionErrorResponse {
+        } on TelevisionException {
           // retry
         }
         await new Future<Null>.delayed(delay);
@@ -797,9 +805,7 @@ class Television {
           transaction.close();
           if (response != 'ERR')
             break;
-        } on TelevisionTimeout {
-          // retry
-        } on TelevisionErrorResponse {
+        } on TelevisionException {
           // retry
         }
         await new Future<Null>.delayed(delay);
@@ -813,13 +819,19 @@ class Television {
   }
 
   Future<String> readValue(String message, { String argument: '?', bool errorIsNull: true }) async {
-    final String response = await readRawValue(message, argument);
-    if (response == 'ERR') {
+    try {
+      final String response = await readRawValue(message, argument);
+      if (response == 'ERR') {
+        if (errorIsNull)
+          return null;
+        throw new TelevisionErrorResponse('Unexpected response to "$message$argument"', response, this);
+      }
+      return response;
+    } on TelevisionException {
       if (errorIsNull)
         return null;
-      throw new TelevisionErrorResponse('Unexpected response to "$message$argument"', response, this);
+      rethrow;
     }
-    return response;
   }
 
   // MESSAGES

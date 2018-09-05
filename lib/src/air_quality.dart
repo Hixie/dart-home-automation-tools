@@ -182,12 +182,12 @@ class AirQuality {
   Iterable<AirQualityStation> get stations => _stations;
   Set<AirQualityStation> _stations;
 
-  AirQualityParameter get ozone => _metrics[ozone];
-  AirQualityParameter get pm2_5 => _metrics[pm2_5];
-  AirQualityParameter get pm10 => _metrics[pm10];
-  AirQualityParameter get carbonMonoxide => _metrics[carbonMonoxide];
-  AirQualityParameter get nitrogenDioxide => _metrics[nitrogenDioxide];
-  AirQualityParameter get sulphurDioxide => _metrics[sulphurDioxide];
+  AirQualityParameter get ozone => _metrics[AirQualityMetric.ozone];
+  AirQualityParameter get pm2_5 => _metrics[AirQualityMetric.pm2_5];
+  AirQualityParameter get pm10 => _metrics[AirQualityMetric.pm10];
+  AirQualityParameter get carbonMonoxide => _metrics[AirQualityMetric.carbonMonoxide];
+  AirQualityParameter get nitrogenDioxide => _metrics[AirQualityMetric.nitrogenDioxide];
+  AirQualityParameter get sulphurDioxide => _metrics[AirQualityMetric.sulphurDioxide];
   Map<AirQualityMetric, AirQualityParameter> _metrics;
 
   @override
