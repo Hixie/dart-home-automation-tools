@@ -618,7 +618,9 @@ class Television {
               throw new TelevisionException('Did not get password prompt from television', responses.current, this);
           } catch (error) {
             if ((error is TelevisionException) ||
-                ((error is SocketException) && (error.osError.errorCode == 32))) { // broken pipe - they accepted the connection then closed it on us
+                ((error is SocketException) &&
+                 ((error.osError.errorCode == 32) || // broken pipe - they accepted the connection then closed it on us
+                  (error.osError.errorCode == 104)))) { // connection reset by peer - same
               errors ??= <dynamic>[];
               errors.add(error);
               socket?.destroy();
@@ -648,6 +650,7 @@ class Television {
       _currentTransaction = null;
       resetTimeout(_inactivityTimeout, 'Idle timeout after connection.');
       _socket.done.whenComplete(() {
+        assert(socket != null);
         if (_socket == socket) {
           assert(_responses == responses);
           abort('Connection lost.');
@@ -677,11 +680,11 @@ class Television {
     }
     _currentTransaction?._closeWithError(error);
     _currentTransaction = null;
-    _socket.destroy();
+    _socket?.destroy();
     _socket = null;
-    _responses.cancel();
+    _responses?.cancel();
     _responses = null;
-    _inactivityTimer.cancel();
+    _inactivityTimer?.cancel();
     _inactivityTimer = null;
     _connectionStream.add(false);
     for (AbortWatcher callback in _abortWatchers.toList())
