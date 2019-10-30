@@ -10,6 +10,7 @@ typedef T ConversionHandler<String, T>(String value);
 class UrlWatchStream<T> extends WatchStream<T> {
   UrlWatchStream(this.client, this.period, this.parser, this.onLog, {
     String url,
+    this.authorization,
   }) {
     this.url = url;
   }
@@ -34,6 +35,8 @@ class UrlWatchStream<T> extends WatchStream<T> {
       }
     }
   }
+
+  String authorization;
 
   Timer _timer;
 
@@ -78,19 +81,21 @@ class UrlWatchStream<T> extends WatchStream<T> {
       try {
         _fetching = true;
         final HttpClientRequest request = await client.getUrl(_url);
+        if (authorization != null)
+          request.headers.add('Authorization', authorization);
         final HttpClientResponse response = await request.close();
         switch (response.statusCode) {
           case 200:
             break;
           default:
             await response.drain();
-            throw new Exception('unexpected error from SunPower servers (${response.statusCode} ${response.reasonPhrase})');
+            throw new Exception('unexpected error from ${_url.host} (${response.statusCode} ${response.reasonPhrase})');
         }
         add(parser(await response.transform(UTF8.decoder).join('')));
       } catch (exception) {
         add(null);
         if (onLog != null)
-          await onLog('$exception');
+          onLog('$exception');
         else
           rethrow;
       }

@@ -34,7 +34,8 @@ class SunPowerMonitor {
 
   Duration get period => _powerStream.period;
 
-  String _customerId;
+  String _addressId;
+  String _tokenId;
   Timer _loginTimer;
 
   Future<Null> _login() async {
@@ -43,7 +44,8 @@ class SunPowerMonitor {
     String data;
     try {
       _powerStream.url = null;
-      request = await _client.postUrl(Uri.parse('https://monitor.us.sunpower.com/CustomerPortal/Auth/Auth.svc/Authenticate'));
+      _powerStream.authorization = null;
+      request = await _client.postUrl(Uri.parse('https://elhapi.edp.sunpower.com/v1/elh/authenticate'));
       request.headers.contentType = new ContentType("application", "json", charset: "utf-8");
       request.write(JSON.encode(<String, dynamic>{
         'username': _customerUsername,
@@ -54,16 +56,18 @@ class SunPowerMonitor {
       data = await response.transform(UTF8.decoder).join();
       try {
         Json result = Json.parse(data);
-        _customerId = result.Payload.TokenID.toString();
-        int expiryInMinutes = result.Payload.ExpiresInMinutes.toInt();
-        Duration expiry;
-        if (expiryInMinutes > 5) {
-          expiry = new Duration(minutes: expiryInMinutes - 5);
+        _addressId = result.addressId.toString();
+        _tokenId = result.tokenID.toString();
+        DateTime expiryTime = new DateTime.fromMillisecondsSinceEpoch(result.expiresEpm.toInt());
+        Duration expiry = expiryTime.difference(new DateTime.now());
+        if (expiry.inMinutes > 5) {
+          expiry = new Duration(minutes: expiry.inMinutes - 5);
         } else {
           expiry = period - _sunPowerMargin;
         }
         _loginTimer = new Timer(expiry, _login);
         _powerStream.url = _url;
+        _powerStream.authorization = 'SP-CUSTOM $_tokenId';
         onLog('logged in; will refresh credentials in ${prettyDuration(expiry)}');
       } catch (error, stack) {
         if (onLog != null)
@@ -75,15 +79,15 @@ class SunPowerMonitor {
     }
   }
 
-  String get _url => 'https://monitor.us.sunpower.com/CustomerPortal/CurrentPower/CurrentPower.svc/GetCurrentPower?id=$_customerId';
+  String get _url => 'https://elhapi.edp.sunpower.com/v1/elh/address/$_addressId/power';
+         // was 'https://monitor.us.sunpower.com/CustomerPortal/CurrentPower/CurrentPower.svc/GetCurrentPower?id=$_customerId';
 
   double _decodePower(String value) {
-    final dynamic payload = JSON.decode(value);
-    if (payload is Map && payload['Payload'] is Map && payload['Payload']['CurrentProduction'] is double)
-      return payload['Payload']['CurrentProduction'];
-    if (payload is Map && payload['StatusCode'] == '201' && payload['ResponseMessage'] == 'Failure')
-      throw new Exception('non-specific error received from SunPower servers');
-    throw new Exception('unexpected data from SunPower servers: $value');
+    try {
+      return Json.parse(value).CurrentProduction.toDouble();
+    } catch (error) {
+      throw new Exception('unexpected data from SunPower servers: $value (failed with $error)');
+    }
   }
 
   void dispose() {

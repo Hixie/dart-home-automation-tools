@@ -72,7 +72,7 @@ abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
 class HandlerWatchStream<T> extends WatchStream<T> {
   HandlerWatchStream(this._onStart, this._onEnd);
 
-  final SinkCallback<T> _onStart;
+  final SinkCallback<T> _onStart; // passes "this" as the sink argument
   
   final VoidCallback _onEnd;
 

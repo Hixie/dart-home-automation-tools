@@ -620,6 +620,7 @@ class Television {
             if ((error is TelevisionException) ||
                 ((error is SocketException) &&
                  ((error.osError.errorCode == 32) || // broken pipe - they accepted the connection then closed it on us
+                  (error.osError.errorCode == 113) || // no route to host - server went down or network went down
                   (error.osError.errorCode == 104)))) { // connection reset by peer - same
               errors ??= <dynamic>[];
               errors.add(error);
