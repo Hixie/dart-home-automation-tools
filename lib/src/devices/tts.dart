@@ -30,8 +30,6 @@ class TextToSpeechServer {
     if (_connectionProgress != null)
       return _connectionProgress;
     Completer<WebSocket> completer;
-    Stopwatch stopwatch = new Stopwatch()
-      ..start();
     do {
       try {
         completer = new Completer<WebSocket>();
@@ -71,8 +69,6 @@ class TextToSpeechServer {
   }
 
   Future<Null> _send(String message, { Duration timeout: kMaxLatency }) async {
-    Stopwatch stopwatch = new Stopwatch()
-      ..start();
     WebSocket socket = await _connect()
       .timeout(timeout, onTimeout: () {
         _log('timed out trying to contact tts daemon after ${prettyDuration(timeout)}');
