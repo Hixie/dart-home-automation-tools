@@ -5,8 +5,9 @@ import 'dart:io';
 import 'package:meta/meta.dart';
 
 import '../common.dart';
-import '../watch_stream.dart';
+import '../metrics.dart';
 import '../temperature.dart';
+import '../watch_stream.dart';
 
 // This is written for the RP32-IP Network Thermostat, V2.40.
 // DIP switches are expected to be 0,1,1,0,1,0,1,0.
@@ -57,7 +58,11 @@ class Thermostat {
   WatchStream<ThermostatStatus> _status;
   WatchStream<ThermostatStatus> get status => _status;
 
+  MeasurementStation _station;
+
   void _processStatus(String message) {
+    assert(_station != null);
+    final DateTime timestamp = new DateTime.now();
     if (!message.startsWith('RAS1:'))
       throw 'Invalid status message from thermostat: $message';
     List<String> fields = message.substring(5, message.length).split(',');
@@ -84,7 +89,7 @@ class Thermostat {
     } else {
       throw 'Unknown thermostat stage "${fields[9]}" in status message: $message';
     }
-    temperature.add(temperatureValue != null ? new ThermostatTemperature.C(temperatureValue) : null);
+    temperature.add(temperatureValue != null ? new ThermostatTemperature.C(temperatureValue, station: _station, timestamp: timestamp) : null);
     status.add(statusValue);
   }
 
@@ -235,8 +240,9 @@ class Thermostat {
             'BAD COMMAND': 'Thermostat did not recognize authentication command.',
             null: 'Could not connect to thermostat.'
           });
+          const String brandName = 'RP32-IP';
           await _verify(connection, buffer, 'REV1', <String, String>{
-            'REV1:RP32-IP,V2.40': null,
+            'REV1:$brandName,V2.40': null,
             null: 'Thermostat firmware revision not supported.',
           });
           await _verify(connection, buffer, 'RDS1', <String, String>{
@@ -258,6 +264,7 @@ class Thermostat {
           });
           final String thermostatName = await _readValue(connection, buffer, 'RMTN1', expectPrefix: true);
           log('Connected to thermostat "$thermostatName" at ${host.host}:$port.');
+          _station = new MeasurementStation(siteName: thermostatName, agencyName: brandName);
           if (verbose)
             log('Message queue has ${_commands.length} commands.');
           while (_connectionRequired) {
@@ -346,18 +353,30 @@ class Thermostat {
 enum TemperatureScale { fahrenheit, celsius }
 
 class ThermostatTemperature extends Temperature {
-  factory ThermostatTemperature(TemperatureScale scale, double temperature) {
+  factory ThermostatTemperature(TemperatureScale scale, double temperature, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+  }) {
     assert(scale != null);
     assert(temperature != null);
     switch (scale) {
-      case TemperatureScale.fahrenheit: return new ThermostatTemperature.F(temperature);
-      case TemperatureScale.celsius: return new ThermostatTemperature.C(temperature);
+      case TemperatureScale.fahrenheit: return new ThermostatTemperature.F(temperature, station: station, timestamp: timestamp);
+      case TemperatureScale.celsius: return new ThermostatTemperature.C(temperature, station: station, timestamp: timestamp);
     }
     return null;
   }
 
-  const ThermostatTemperature.F(this._value) : _valueIsF = true;
-  const ThermostatTemperature.C(this._value) : _valueIsF = false;
+  ThermostatTemperature.F(this._value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+  }) : _valueIsF = true,
+       super(station: station, timestamp: timestamp);
+
+  ThermostatTemperature.C(this._value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+  }) : _valueIsF = false,
+       super(station: station, timestamp: timestamp);
 
   final double _value;
   final bool _valueIsF;

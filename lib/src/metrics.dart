@@ -4,9 +4,11 @@ import 'package:meta/meta.dart';
 
 import 'common.dart';
 import 'hash_codes.dart';
+import 'temperature.dart';
+import 'radiation.dart';
 
-class AirQualityStation {
-  const AirQualityStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode });
+class MeasurementStation {
+  const MeasurementStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode });
 
   final double latitude;
   final double longitude;
@@ -25,7 +27,7 @@ class AirQualityStation {
   bool operator ==(dynamic other) {
     if (other.runtimeType != runtimeType)
       return false;
-    AirQualityStation typedOther = other;
+    MeasurementStation typedOther = other;
     return typedOther.latitude == latitude
         && typedOther.longitude == longitude
         && typedOther.siteName == siteName
@@ -35,113 +37,188 @@ class AirQualityStation {
   }
 }
 
-enum AirQualityMetric {
-  ozone,
-  pm2_5,
-  pm10,
+enum Metric {
+  carbonDioxide,
   carbonMonoxide,
+  formaldehyde,
+  humidity,
   nitrogenDioxide,
+  noise,
+  ozone,
+  pm10,
+  pm2_5,
+  pressure,
+  radiation,
   sulphurDioxide,
-}
-
-enum AirQualityUnits {
-  microgramsPerCubicMeter,
-  partsPerMillion,
-  partsPerBillion,
+  temperature,
+  volatileOrganicCompounds,
 }
 
 @immutable
-class AirQualityParameter {
-  AirQualityParameter({
-    this.station,
-    this.timestamp,
-    AirQualityMetric metric,
-    this.parameterName,
-    AirQualityUnits units,
-    this.unitsName,
-    this.value,
-    double aqi,
-    this.category,
-  }) : metric = metric ?? identifyParameter(parameterName),
-       units = units ?? identifyUnits(unitsName),
-       aqi = aqi >= 0.0 ? aqi : null;
-
-  static AirQualityMetric identifyParameter(String parameterName) {
-    switch (parameterName) {
-      case 'OZONE': return AirQualityMetric.ozone;
-      case 'PM2.5': return AirQualityMetric.pm2_5;
-      case 'PM10': return AirQualityMetric.pm10;
-      case 'CO': return AirQualityMetric.carbonMonoxide;
-      case 'NO2': return AirQualityMetric.nitrogenDioxide;
-      case 'SO2': return AirQualityMetric.sulphurDioxide;
-    }
-    return null;
+abstract class Measurement {
+  Measurement({
+    @required this.station,
+    @required this.timestamp,
+  }) {
+    assert(station != null);
+    assert(timestamp != null);
   }
 
-  static AirQualityUnits identifyUnits(String parameterName) {
-    switch (parameterName) {
-      case 'UG/M3': return AirQualityUnits.microgramsPerCubicMeter;
-      case 'PPM': return AirQualityUnits.partsPerMillion;
-      case 'PPB': return AirQualityUnits.partsPerBillion;
-    }
-    return null;
-  }
-
-  final AirQualityStation station;
+  final MeasurementStation station;
   final DateTime timestamp;
-  final AirQualityMetric metric;
-  final String parameterName;
-  final AirQualityUnits units;
-  final String unitsName;
-  final double value;
-  final double aqi;
-  final int category;
+
+  Metric get metric;
+
+  double get value;
+  MetricUnits get units;
 
   @override
   String toString() {
     StringBuffer result = new StringBuffer();
-    if (metric != null) {
-      switch (metric) {
-        case AirQualityMetric.ozone:
-          result.write('O₃: ');
-          break;
-        case AirQualityMetric.pm2_5:
-          result.write('PM₂.₅: ');
-          break;
-        case AirQualityMetric.pm10:
-          result.write('PM₁₀: ');
-          break;
-        case AirQualityMetric.carbonMonoxide:
-          result.write('CO: ');
-          break;
-        case AirQualityMetric.nitrogenDioxide:
-          result.write('NO₂: ');
-          break;
-        case AirQualityMetric.sulphurDioxide:
-          result.write('SO₂: ');
-          break;
-      }
-    } else if (parameterName != null) {
-      result.write('$parameterName: ');
-    }
     if (value != null) {
       result.write(value.toStringAsFixed(2));
-      if (units != null) {
-        switch (units) {
-          case AirQualityUnits.microgramsPerCubicMeter:
-            result.write('µg/m³');
-            break;
-          case AirQualityUnits.partsPerMillion:
-            result.write('ppm');
-            break;
-          case AirQualityUnits.partsPerBillion:
-            result.write('ppb');
-            break;
-        }
-      } else if (unitsName != null) {
-        result.write('$unitsName');
+      switch (units) {
+        case MetricUnits.celsius:
+          result.write('℃');
+          break;
+        case MetricUnits.decibels:
+          result.write('dB');
+          break;
+        case MetricUnits.fahrenheit:
+          result.write('℉');
+          break;
+        case MetricUnits.microgramsPerCubicMeter:
+          result.write('µg/m³');
+          break;
+        case MetricUnits.microsievertsPerHour:
+          result.write('μSv/h');
+          break;
+        case MetricUnits.milligramsPerCubicMeter:
+          result.write('mg/m³');
+          break;
+        case MetricUnits.ohm:
+          result.write('Ω');
+          break;
+        case MetricUnits.partsPerBillion:
+          result.write('ppb');
+          break;
+        case MetricUnits.partsPerMillion:
+          result.write('ppm');
+          break;
+        case MetricUnits.pascals:
+          result.write('Pa');
+          break;
+        case MetricUnits.relativeHumidity:
+          result.write('RH');
+          break;
       }
+    } else {
+      result.write('unknown');
     }
+    return result.toString();
+  }
+}
+
+enum MetricUnits {
+  celsius,
+  decibels,
+  fahrenheit,
+  microgramsPerCubicMeter,
+  microsievertsPerHour,
+  milligramsPerCubicMeter,
+  ohm,
+  partsPerBillion,
+  partsPerMillion,
+  pascals,
+  relativeHumidity,
+}
+
+class AirQualityParameter extends Measurement {
+  AirQualityParameter({
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    @required this.metric,
+    @required this.units,
+    @required this.value,
+    this.aqi,
+  }) : super(station: station, timestamp: timestamp) {
+    assert(station != null);
+    assert(timestamp != null);
+    assert(metric != null);
+    assert(units != null);
+  }
+
+  AirQualityParameter.humidity(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.humidity,
+       units = MetricUnits.relativeHumidity,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.pressure(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.pressure,
+       units = MetricUnits.pascals,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.volatileOrganicCompounds(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.volatileOrganicCompounds,
+       units = MetricUnits.ohm, // MetricUnits.milligramsPerCubicMeter,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.carbonDioxide(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.carbonDioxide,
+       units = MetricUnits.partsPerMillion,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.noise(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.noise,
+       units = MetricUnits.decibels,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.formaldehyde(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.formaldehyde,
+       units = MetricUnits.partsPerMillion,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.pm2_5(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    this.aqi,
+  }) : metric = Metric.pm2_5,
+       units = MetricUnits.microgramsPerCubicMeter,
+       super(station: station, timestamp: timestamp);
+
+  @override
+  final Metric metric;
+
+  @override
+  final double value;
+
+  @override
+  final MetricUnits units;
+
+  final double aqi;
+
+  @override
+  String toString() {
+    final StringBuffer result = new StringBuffer();
+    result.write(super.toString());
     if (aqi != null) {
       if (value != null)
         result.write(' (');
@@ -153,12 +230,12 @@ class AirQualityParameter {
   }
 }
 
-class AirQuality {
-  AirQuality(List<AirQualityParameter> parameters) {
+class MeasurementPacket {
+  MeasurementPacket(List<Measurement> parameters) {
     _parameters = parameters;
-    _stations = new HashSet<AirQualityStation>();
-    _metrics = new HashMap<AirQualityMetric, AirQualityParameter>();
-    for (AirQualityParameter parameter in parameters) {
+    _stations = new HashSet<MeasurementStation>();
+    _metrics = new HashMap<Metric, Measurement>();
+    for (Measurement parameter in parameters) {
       _earliestTimestamp = min(_earliestTimestamp, parameter.timestamp);
       _latestTimestamp = max(_latestTimestamp, parameter.timestamp);
       _stations.add(parameter.station);
@@ -172,42 +249,88 @@ class AirQuality {
   DateTime get latestTimestamp => _latestTimestamp;
   DateTime _latestTimestamp;
 
-  Iterable<AirQualityParameter> get parameters => _parameters;
-  List<AirQualityParameter> _parameters;
+  Iterable<Measurement> get parameters => _parameters;
+  List<Measurement> _parameters;
 
-  Iterable<AirQualityStation> get stations => _stations;
-  Set<AirQualityStation> _stations;
+  Iterable<MeasurementStation> get stations => _stations;
+  Set<MeasurementStation> _stations;
 
-  AirQualityParameter get ozone => _metrics[AirQualityMetric.ozone];
-  AirQualityParameter get pm2_5 => _metrics[AirQualityMetric.pm2_5];
-  AirQualityParameter get pm10 => _metrics[AirQualityMetric.pm10];
-  AirQualityParameter get carbonMonoxide => _metrics[AirQualityMetric.carbonMonoxide];
-  AirQualityParameter get nitrogenDioxide => _metrics[AirQualityMetric.nitrogenDioxide];
-  AirQualityParameter get sulphurDioxide => _metrics[AirQualityMetric.sulphurDioxide];
-  Map<AirQualityMetric, AirQualityParameter> _metrics;
+  AirQualityParameter get carbonDioxide => _metrics[Metric.carbonDioxide] as AirQualityParameter;
+  AirQualityParameter get carbonMonoxide => _metrics[Metric.carbonMonoxide] as AirQualityParameter;
+  AirQualityParameter get formaldehyde => _metrics[Metric.formaldehyde] as AirQualityParameter;
+  AirQualityParameter get humidity => _metrics[Metric.humidity] as AirQualityParameter;
+  AirQualityParameter get nitrogenDioxide => _metrics[Metric.nitrogenDioxide] as AirQualityParameter;
+  AirQualityParameter get noise => _metrics[Metric.noise] as AirQualityParameter;
+  AirQualityParameter get ozone => _metrics[Metric.ozone] as AirQualityParameter;
+  AirQualityParameter get pm10 => _metrics[Metric.pm10] as AirQualityParameter;
+  AirQualityParameter get pm2_5 => _metrics[Metric.pm2_5] as AirQualityParameter;
+  AirQualityParameter get pressure => _metrics[Metric.pressure] as AirQualityParameter;
+  Radiation get radiation => _metrics[Metric.radiation] as Radiation;
+  AirQualityParameter get sulphurDioxide => _metrics[Metric.sulphurDioxide] as AirQualityParameter;
+  Temperature get temperature => _metrics[Metric.temperature] as Temperature;
+  AirQualityParameter get volatileOrganicCompounds => _metrics[Metric.volatileOrganicCompounds] as AirQualityParameter;
+  Map<Metric, Measurement> _metrics;
 
   @override
   String toString() {
+    if (_parameters.isEmpty)
+      return 'no data';
     StringBuffer result = new StringBuffer();
     DateTime stamp = timestamp;
     if (stamp == null)
       result.write('$earliestTimestamp - $latestTimestamp');
     else
       result.write('$stamp');
-    Set<AirQualityStation> stations = new HashSet<AirQualityStation>();
+    Set<MeasurementStation> stations = new HashSet<MeasurementStation>();
     int count = 0;
-    for (AirQualityMetric metric in AirQualityMetric.values) {
-      AirQualityParameter parameter = _metrics[metric];
+    for (Metric metric in Metric.values) {
+      Measurement parameter = _metrics[metric];
       if (parameter != null) {
         result.write('  ');
-        result.write(parameter.toString());
-        stations.add(parameter.station);
-        count += 1;
-      }
-    }
-    if (count == 0) {
-      for (AirQualityParameter parameter in _parameters) {
-        result.write('  ');
+        switch (metric) {
+          case Metric.carbonDioxide:
+            result.write('CO₂: ');
+            break;
+          case Metric.carbonMonoxide:
+            result.write('CO: ');
+            break;
+          case Metric.formaldehyde:
+            result.write('CH₂O: ');
+            break;
+          case Metric.humidity:
+            result.write('Humidity: ');
+            break;
+          case Metric.nitrogenDioxide:
+            result.write('NO₂: ');
+            break;
+          case Metric.noise:
+            result.write('Noise: ');
+            break;
+          case Metric.ozone:
+            result.write('O₃: ');
+            break;
+          case Metric.pm10:
+            result.write('PM₁₀: ');
+            break;
+          case Metric.pm2_5:
+            result.write('PM₂.₅: ');
+            break;
+          case Metric.pressure:
+            result.write('Pressure: ');
+            break;
+          case Metric.radiation:
+            result.write('Radiation: ');
+            break;
+          case Metric.sulphurDioxide:
+            result.write('SO₂: ');
+            break;
+          case Metric.temperature:
+            result.write('Temperature: ');
+            break;
+          case Metric.volatileOrganicCompounds:
+            result.write('VOC: ');
+            break;
+        }
         result.write(parameter.toString());
         stations.add(parameter.station);
         count += 1;
@@ -227,14 +350,4 @@ class AirQuality {
     }
     return result.toString();
   }
-}
-
-class GeoBox {
-  const GeoBox(this.minLat, this.minLong, this.maxLat, this.maxLong);
-  final double minLat;
-  final double minLong;
-  final double maxLat;
-  final double maxLong;
-  @override
-  String toString() => '${minLat.toStringAsFixed(6)},${minLong.toStringAsFixed(6)},${maxLat.toStringAsFixed(6)},${maxLong.toStringAsFixed(6)}';
 }

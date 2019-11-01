@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:meta/meta.dart';
 
 import '../common.dart';
+import '../metrics.dart';
 import '../temperature.dart';
 import '../watch_stream.dart';
 
@@ -160,8 +161,18 @@ class BitDemultiplexer {
 
 // All else being equal, using F is better because the precision is greater
 class TemperatureSensor extends Temperature {
-  const TemperatureSensor.F(this._value) : _valueIsF = true;
-  const TemperatureSensor.C(this._value) : _valueIsF = false;
+  TemperatureSensor.F(this._value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+  }) : _valueIsF = true,
+       super(station: station, timestamp: timestamp);
+
+  TemperatureSensor.C(this._value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+  }) : _valueIsF = false,
+       super(station: station, timestamp: timestamp);
+
   final int _value; // 0..1024
   final bool _valueIsF;
   @override
