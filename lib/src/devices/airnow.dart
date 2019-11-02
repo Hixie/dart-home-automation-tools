@@ -15,15 +15,15 @@ class AirNowAirQualityMonitor {
     assert(apiKey != null);
     _client = new HttpClient();
     final String url = 'http://www.airnowapi.org/aq/data/?parameters=O3,PM25,PM10,CO,NO2,SO2&BBOX=$area&dataType=B&format=application/json&verbose=1&API_KEY=$apiKey';
-    _airStream = new UrlWatchStream<MeasurementPacket>(_client, const Duration(minutes: 15), _decodeData, onLog, url: url);
+    _dataStream = new UrlWatchStream<MeasurementPacket>(_client, const Duration(minutes: 15), _decodeData, onLog, url: url);
   }
 
   HttpClient _client;
 
   final LogCallback onLog;
 
-  Stream<MeasurementPacket> get value => _airStream;
-  UrlWatchStream<MeasurementPacket> _airStream;
+  Stream<MeasurementPacket> get dataStream => _dataStream;
+  UrlWatchStream<MeasurementPacket> _dataStream;
 
   MeasurementPacket _decodeData(String value) {
     List<AirQualityParameter> parameters = <AirQualityParameter>[];
@@ -59,8 +59,8 @@ class AirNowAirQualityMonitor {
   }
 
   void dispose() {
-    _airStream.close();
-    _airStream = null;
+    _dataStream.close();
+    _dataStream = null;
     _client.close(force: true);
   }
 }

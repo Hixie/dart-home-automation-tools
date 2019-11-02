@@ -8,7 +8,7 @@ import 'temperature.dart';
 import 'radiation.dart';
 
 class MeasurementStation {
-  const MeasurementStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode });
+  const MeasurementStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode, this.corrected: false });
 
   final double latitude;
   final double longitude;
@@ -16,12 +16,38 @@ class MeasurementStation {
   final String agencyName;
   final String aqsCode;
   final String internationalAqsCode;
+  final bool corrected;
 
   @override
-  String toString() => siteName ?? agencyName ?? aqsCode ?? internationalAqsCode ?? '$latitude,$longitude';
+  String toString() {
+    String result = siteName ?? agencyName ?? aqsCode ?? internationalAqsCode ?? '$latitude,$longitude';
+    if (corrected)
+      result = '$result (with adjustments)';
+    return result;
+  }
+
+  MeasurementStation copyWith({
+    double latitude,
+    double longitude,
+    String siteName,
+    String agencyName,
+    String aqsCode,
+    String internationalAqsCode,
+    bool corrected,
+  }) {
+    return new MeasurementStation(
+      latitude: latitude ?? this.latitude, 
+      longitude: longitude ?? this.longitude, 
+      siteName: siteName ?? this.siteName, 
+      agencyName: agencyName ?? this.agencyName, 
+      aqsCode: aqsCode ?? this.aqsCode, 
+      internationalAqsCode: internationalAqsCode ?? this.internationalAqsCode, 
+      corrected: corrected ?? this.corrected, 
+    );
+  }
 
   @override
-  int get hashCode => hashValues(latitude, longitude, siteName, agencyName, aqsCode, internationalAqsCode);
+  int get hashCode => hashValues(latitude, longitude, siteName, agencyName, aqsCode, internationalAqsCode, corrected);
 
   @override
   bool operator ==(dynamic other) {
@@ -33,7 +59,8 @@ class MeasurementStation {
         && typedOther.siteName == siteName
         && typedOther.agencyName == agencyName
         && typedOther.aqsCode == aqsCode
-        && typedOther.internationalAqsCode == internationalAqsCode;
+        && typedOther.internationalAqsCode == internationalAqsCode
+        && typedOther.corrected == corrected;
   }
 }
 
@@ -61,7 +88,6 @@ abstract class Measurement {
     @required this.timestamp,
   }) {
     assert(station != null);
-    assert(timestamp != null);
   }
 
   final MeasurementStation station;

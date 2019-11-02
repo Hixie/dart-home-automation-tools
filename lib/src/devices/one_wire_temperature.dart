@@ -60,6 +60,8 @@ class OneWireTemperature {
       if (lines[1].substring(27, 29) != 't=')
         throw new Exception('incorrect format of data from thermal sensor');
       double celsius = int.parse(lines[1].substring(29)) / 1000.0;
+      if (celsius == 85.0)
+        throw new Exception('thermal sensor rebooting');
       temperature.add(new RawTemperature(celsius, station: station, timestamp: timestamp));
     } catch (error) {
       await fail(error);

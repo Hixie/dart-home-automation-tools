@@ -16,7 +16,7 @@ import '../watch_stream.dart';
 
 enum ThermostatStatus { heating, cooling, fan, idle }
 
-final bool verbose = false;
+final bool verbose = true;
 
 class _PendingCommand {
   _PendingCommand(this.message);
@@ -210,11 +210,11 @@ class Thermostat {
     _PendingCommand command = new _PendingCommand(message);
     if (_commands.containsKey(key)) {
       if (verbose)
-        log('Replacing old message with key "$key" with new message: $message');
+        log('replacing old message with key "$key" with new message: $message');
       _commands.remove(key);
     } else {
       if (verbose)
-        log('Queuing new message with key "$key": $message');
+        log('queuing new message with key "$key": $message');
     }
     _commands[key] = command;
     _triggerSignal();
@@ -263,10 +263,10 @@ class Thermostat {
             null: 'Thermostat must be configured to use Celsius units.',
           });
           final String thermostatName = await _readValue(connection, buffer, 'RMTN1', expectPrefix: true);
-          log('Connected to thermostat "$thermostatName" at ${host.host}:$port.');
+          log('connected to thermostat "$thermostatName" at ${host.host}:$port.');
           _station = new MeasurementStation(siteName: thermostatName, agencyName: brandName);
           if (verbose)
-            log('Message queue has ${_commands.length} commands.');
+            log('message queue has ${_commands.length} commands.');
           while (_connectionRequired) {
             if (_commands.isNotEmpty) {
               Object key = _commands.keys.first;

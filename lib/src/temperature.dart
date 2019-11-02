@@ -48,6 +48,10 @@ abstract class Temperature extends Measurement implements Comparable<Temperature
     return celsius == other.celsius;
   }
 
+  Temperature correct(double delta) {
+    return new RawTemperature(celsius + delta, station: station.copyWith(corrected: true), timestamp: timestamp);
+  }
+
   @override
   int get hashCode => celsius.hashCode;
 
@@ -67,4 +71,8 @@ class RawTemperature extends Temperature {
 
   @override
   final double celsius;
+}
+
+class TargetTemperature extends RawTemperature {
+  TargetTemperature(double celsius) : super(celsius, station: const MeasurementStation(siteName: 'Target'), timestamp: null);
 }
