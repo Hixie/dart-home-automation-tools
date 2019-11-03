@@ -16,7 +16,7 @@ import '../watch_stream.dart';
 
 enum ThermostatStatus { heating, cooling, fan, idle }
 
-final bool verbose = true;
+final bool verbose = false;
 
 class _PendingCommand {
   _PendingCommand(this.message);
