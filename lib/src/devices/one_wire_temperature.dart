@@ -15,6 +15,7 @@ class OneWireTemperature {
     this.onError,
   }) {
     _temperature = new HandlerWatchStream<Temperature>(_start, _end);
+    _tick(null);
   }
 
   final String id;

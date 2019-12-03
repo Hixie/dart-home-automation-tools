@@ -288,7 +288,11 @@ class Thermostat {
             new Future<Null>.delayed(const Duration(seconds: 10)),
           ]);
         } finally {
-          connection?.destroy();
+          try {
+            connection?.destroy();
+          } catch (error) {
+            await fail(error);
+          } 
         }
       }
       await _signal.future;

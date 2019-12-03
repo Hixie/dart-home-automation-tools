@@ -50,10 +50,10 @@ class MeasurementStation {
   int get hashCode => hashValues(latitude, longitude, siteName, agencyName, aqsCode, internationalAqsCode, corrected);
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (other.runtimeType != runtimeType)
       return false;
-    MeasurementStation typedOther = other;
+    final MeasurementStation typedOther = other;
     return typedOther.latitude == latitude
         && typedOther.longitude == longitude
         && typedOther.siteName == siteName
@@ -254,6 +254,22 @@ class AirQualityParameter extends Measurement {
     }
     return result.toString();
   }
+
+  @override
+  int get hashCode => hashValues(station, timestamp, metric, value, units, aqi);
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType)
+      return false;
+    final AirQualityParameter typedOther = other;
+    return typedOther.station == station
+        && typedOther.timestamp == timestamp
+        && typedOther.metric == metric
+        && typedOther.value == value
+        && typedOther.units == units
+        && typedOther.aqi == aqi;
+  }
 }
 
 class MeasurementPacket {
@@ -375,5 +391,16 @@ class MeasurementPacket {
       result.write('  no data');
     }
     return result.toString();
+  }
+
+  @override
+  int get hashCode => hashList(parameters);
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType)
+      return false;
+    final MeasurementPacket typedOther = other;
+    return listEquals<Measurement>(typedOther.parameters, parameters);
   }
 }
