@@ -83,7 +83,7 @@ class StreamTransformerBase<From, To> implements StreamTransformer<From, To> {
 
   @override
   StreamTransformer<RS, TS> cast<RS, TS>() {
-    throw 'not implemented';
+    throw Error(); // not implemented
   }
 }
 

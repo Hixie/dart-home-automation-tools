@@ -108,7 +108,7 @@ class Remy {
           onConnected();
         _keepAlive = new Timer.periodic(const Duration(seconds: 60), (Timer t) => ping());
         await Future.any(<Future<Null>>[
-          _listen(_server.transform(_RemyMessageParser.getTransformer(3))),
+          _listen(_server.cast<List<int>>().transform(_RemyMessageParser.getTransformer(3))),
           _writeLoop(),
           _closed.future,
         ]);
