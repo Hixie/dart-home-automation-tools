@@ -36,7 +36,7 @@ class URadMonitor {
   MeasurementPacket _handleData(String value) {
     final DateTime timestamp = new DateTime.now();
     try {
-      Json data = Json.parse(value).data;
+      dynamic data = Json.parse(value).data;
       if (data.type.toString() != '8')
         throw 'unknown device type';
       List<Measurement> parameters = <Measurement>[

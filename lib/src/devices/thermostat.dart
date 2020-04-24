@@ -68,7 +68,7 @@ class Thermostat {
     List<String> fields = message.substring(5, message.length).split(',');
     if (fields.length != 10)
       throw 'Incorrect number of fields in status message from thermostat: $message';
-    final double temperatureValue = double.parse(fields[0], (String value) => null);
+    final double temperatureValue = double.tryParse(fields[0]);
     ThermostatStatus statusValue;
     if (fields[9] == '1') {
       if (fields[8] == 'COOL') {
@@ -229,9 +229,9 @@ class Thermostat {
         Socket connection;
         try {
           connection = await Socket.connect(host, port);
-          connection.encoding = UTF8;
+          connection.encoding = utf8;
           final StreamBuffer<String> buffer = new StreamBuffer<String>(
-            connection.transform(UTF8.decoder).transform(const LineSplitter()),
+            connection.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()),
           );
           await _verify(connection, buffer, 'WML1D$username,$password', <String, String>{
             'OK,USER,NO': null,

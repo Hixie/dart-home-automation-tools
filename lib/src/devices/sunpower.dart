@@ -47,15 +47,15 @@ class SunPowerMonitor {
       _powerStream.authorization = null;
       request = await _client.postUrl(Uri.parse('https://elhapi.edp.sunpower.com/v1/elh/authenticate'));
       request.headers.contentType = new ContentType("application", "json", charset: "utf-8");
-      request.write(JSON.encode(<String, dynamic>{
+      request.write(json.encode(<String, dynamic>{
         'username': _customerUsername,
         'password': _customerPassword,
         'isPersistent': false,
       }));
       response = await request.close();
-      data = await response.transform(UTF8.decoder).join();
+      data = await response.transform(utf8.decoder).join();
       try {
-        Json result = Json.parse(data);
+        dynamic result = Json.parse(data);
         _addressId = result.addressId.toString();
         _tokenId = result.tokenID.toString();
         DateTime expiryTime = new DateTime.fromMillisecondsSinceEpoch(result.expiresEpm.toInt());

@@ -26,9 +26,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import 'dart:convert' as dart show JSON;
+import 'dart:convert' as dart show json;
 
-@proxy
 class Json {
   factory Json(dynamic input) {
     if (input is Json)
@@ -53,8 +52,8 @@ class Json {
 
   const Json._raw(this._value);
 
-  static Json parse(String value) {
-    return new Json(dart.JSON.decode(value));
+  static dynamic parse(String value) {
+    return new Json(dart.json.decode(value));
   }
 
   final dynamic _value;
@@ -128,7 +127,7 @@ class Json {
   String toString() => _value.toString();
 
   String toJson() {
-    return dart.JSON.encode(_unwrap());
+    return dart.json.encode(_unwrap());
   }
 
   dynamic operator [](dynamic key) {

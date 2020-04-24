@@ -80,6 +80,11 @@ class StreamTransformerBase<From, To> implements StreamTransformer<From, To> {
     );
     return output.stream;
   }
+
+  @override
+  StreamTransformer<RS, TS> cast<RS, TS>() {
+    throw 'not implemented';
+  }
 }
 
 StreamTransformer<bool, bool> debouncer(Duration debounceDuration) {

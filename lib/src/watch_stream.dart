@@ -157,8 +157,8 @@ class _WatchStreamSubscription<T> extends StreamSubscription<T> {
   bool get isPaused => _paused > 0;
   
   @override
-  Future/*<E>*/ asFuture/*<E>*/([var/*=E*/ futureValue]) {
-    Completer/*<E>*/ completer = new Completer/*<E>*/();
+  Future<E> asFuture<E>([E futureValue]) {
+    Completer<E> completer = new Completer<E>();
     _handleDone = () {
       completer.complete(futureValue);
     };

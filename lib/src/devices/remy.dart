@@ -96,7 +96,7 @@ class Remy {
           host = hosts.first;
         }
         _server = await SecureSocket.connect(host, port);
-        _server.encoding = UTF8;
+        _server.encoding = utf8;
         if (onUiUpdate != null) {
           _server.write('enable-ui\x00\x00\x00');
           await _server.flush().catchError(
@@ -153,20 +153,20 @@ class Remy {
       return;
     }
     List<List<int>> parts = _nullSplit(bytes, 2).toList();
-    if (UTF8.decode(parts[0]) == 'update') {
+    if (utf8.decode(parts[0]) == 'update') {
       if (onUiUpdate != null) {
         final Map<String, RemyButton> buttons = <String, RemyButton>{};
         final Set<RemyMessage> messages = new Set<RemyMessage>();
         final Set<RemyToDo> todos = new Set<RemyToDo>();
         for (List<int> entry in parts.skip(1)) {
-          final List<String> data = _nullSplit(entry, 1).map/*<String>*/(UTF8.decode).toList();
+          final List<String> data = _nullSplit(entry, 1).map<String>(utf8.decode).toList();
           if (data.isEmpty) {
             if (onLog != null)
-              onLog('invalid data packet from Remy (has empty entry in UI update): ${UTF8.decode(bytes)}');
+              onLog('invalid data packet from Remy (has empty entry in UI update): ${utf8.decode(bytes)}');
           } else if (data[0] == 'button') {
             if (data.length < 4) {
               if (onLog != null)
-                onLog('invalid data packet from Remy (insufficient data in button packet): ${UTF8.decode(bytes)}');
+                onLog('invalid data packet from Remy (insufficient data in button packet): ${utf8.decode(bytes)}');
             } else if (buttons.containsKey(data[1])) {
               if (onLog != null)
                 onLog('received duplicate button ID');
@@ -176,19 +176,13 @@ class Remy {
           } else if (data[0] == 'message') {
             if (data.length < 4) {
               if (onLog != null)
-                onLog('invalid data packet from Remy (insufficient data in message packet): ${UTF8.decode(bytes)}');
+                onLog('invalid data packet from Remy (insufficient data in message packet): ${utf8.decode(bytes)}');
             } else {
               messages.add(new RemyMessage(
                 data[1],
                 new Set<String>.from(data[2].split(' ')),
-                int.parse(
-                  data[3],
-                  onError: (String source) {
-                    if (onLog != null)
-                      onLog('unexpected "numeric" data from Remy: $source');
-                  },
-                ),
-                data.sublist(4).map/*<RemyButton>*/((String id) {
+                _parseEscalationLevel(data[3]),
+                data.sublist(4).map<RemyButton>((String id) {
                   if (buttons.containsKey(id))
                     return buttons[id];
                   if (onLog != null)
@@ -200,24 +194,18 @@ class Remy {
           } else if (data[0] == 'todo') {
             if (data.length < 5) {
               if (onLog != null)
-                onLog('invalid data packet from Remy (insufficient data in todo packet): ${UTF8.decode(bytes)}');
+                onLog('invalid data packet from Remy (insufficient data in todo packet): ${utf8.decode(bytes)}');
             } else {
               todos.add(new RemyToDo(
                 data[1],
                 data[2],
                 new Set<String>.from(data[3].split(' ')),
-                int.parse(
-                  data[4],
-                  onError: (String source) {
-                    if (onLog != null)
-                      onLog('unexpected "numeric" data from Remy: $source');
-                  },
-                ),
+                _parseEscalationLevel(data[4]),
               ));
             }
           } else {
             if (onLog != null)
-              onLog('unexpected data from Remy: ${UTF8.decode(bytes)}');
+              onLog('unexpected data from Remy: ${utf8.decode(bytes)}');
           }
         }
         _currentState = new RemyUi(
@@ -228,22 +216,16 @@ class Remy {
         onUiUpdate(currentState);
       }
     } else {
-      final List<String> data = _nullSplit(parts[0], 1).map<String>(UTF8.decode).toList();
+      final List<String> data = _nullSplit(parts[0], 1).map<String>(utf8.decode).toList();
       if (data.length < 3) {
         if (onLog != null)
-          onLog('invalid data packet from Remy (insufficient data in notification packet): ${UTF8.decode(bytes)}');
+          onLog('invalid data packet from Remy (insufficient data in notification packet): ${utf8.decode(bytes)}');
       } else {
         if (onNotification != null) {
           onNotification(new RemyNotification(
             data[1],
             new Set<String>.from(data[2].split(' ')),
-            int.parse(
-              data[0],
-              onError: (String source) {
-                if (onLog != null)
-                  onLog('unexpected "numeric" data from Remy: $source');
-              },
-            ),
+            _parseEscalationLevel(data[0]),
           ));
         }
       }
@@ -268,6 +250,16 @@ class Remy {
       index += 1;
     }
     yield bytes.sublist(start, index);
+  }
+
+  int _parseEscalationLevel(String value) {
+    int escalationLevel = int.tryParse(value);
+    if (escalationLevel == null) {
+      if (onLog != null)
+        onLog('unexpected "numeric" data from Remy: $value');
+      escalationLevel = 0;
+    }
+    return escalationLevel;
   }
 
   void pushButton(RemyButton button) {

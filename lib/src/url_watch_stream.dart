@@ -91,7 +91,7 @@ class UrlWatchStream<T> extends WatchStream<T> {
             await response.drain();
             throw new Exception('unexpected error from ${_url.host} (${response.statusCode} ${response.reasonPhrase})');
         }
-        add(parser(await response.transform(UTF8.decoder).join('')));
+        add(parser(await response.transform(utf8.decoder).join('')));
       } catch (exception) {
         add(null);
         if (onLog != null)

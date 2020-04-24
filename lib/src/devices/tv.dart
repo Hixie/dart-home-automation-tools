@@ -606,10 +606,10 @@ class Television {
             if (_debugDumpTraffic)
               print('$_timestamp ---- CONNECTING ----');
             socket = await Socket.connect(host, port);
-            socket.encoding = UTF8;
+            socket.encoding = utf8;
             socket.write('$username\x0d$password\x0d');
             await socket.flush();
-            responses = new StreamIterator<String>(socket.transform(UTF8.decoder).transform(const LineSplitter()));
+            responses = new StreamIterator<String>(socket.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()));
             await responses.moveNext();
             if (responses.current != 'Login:')
               throw new TelevisionException('Did not get login prompt from television', responses.current, this);

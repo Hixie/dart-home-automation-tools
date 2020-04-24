@@ -41,19 +41,19 @@ class TextToSpeechServer {
         await new Future<Null>.delayed(kRetryDelay);
         _connection = null;
       }
-    } while (_connection == null);
+    } while (_connection == null); // ignore: invariant_booleans, false positive
     _connection.listen((dynamic message) {
       if (message is String) {
         if (!message.startsWith(kCompleted))
           return;
-        int handle = int.parse(message.substring(kCompleted.length), onError: (String source) => 0);
+        int handle = int.tryParse(message.substring(kCompleted.length)) ?? 0;
         if (_pending.containsKey(handle)) {
           _pending[handle].complete();
           _pending.remove(handle);
         }
       }
     });
-    _connection.done.then((WebSocket socket) {
+    _connection.done.then((dynamic arg) async {
       _connection = null;
       for (Completer<Null> completer in _pending.values)
         completer.complete();
@@ -65,7 +65,7 @@ class TextToSpeechServer {
   }
 
   void dispose() {
-    _connection?.close(WebSocketStatus.GOING_AWAY);
+    _connection?.close(WebSocketStatus.goingAway);
   }
 
   Future<Null> _send(String message, { Duration timeout: kMaxLatency }) async {
