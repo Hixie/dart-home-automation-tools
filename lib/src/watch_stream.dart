@@ -54,7 +54,8 @@ abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
   void close() {
     for (_WatchStreamSubscription<T> subscription in _subscriptions)
       subscription._dispose();
-    handleEnd();
+    if (_subscriptions.isNotEmpty)
+      handleEnd();
     _subscriptions = null;
   }
 

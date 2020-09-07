@@ -75,6 +75,7 @@ class OneWireTemperature {
   }
 
   void dispose() {
+    _temperature.close();
     _timer?.cancel();
   }
 }

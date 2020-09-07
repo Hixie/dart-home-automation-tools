@@ -186,20 +186,35 @@ String prettyDuration(Duration duration) {
     return 'one hour';
 
   StringBuffer result = new StringBuffer();
-  if (weeks > 0)
+  int fields = 0x00;
+  if (weeks > 0) {
     result.write('${weeks}w ');
-  if (days > 0)
+    fields |= 0x80;
+  }
+  if (days > 0) {
     result.write('${days}d ');
-  if (hours > 0)
+    fields |= 0x40;
+  }
+  if (hours > 0 && fields < 0x80) {
     result.write('${hours}h ');
-  if (minutes > 0)
+    fields |= 0x20;
+  }
+  if (minutes > 0 && fields < 0x40) {
     result.write('${minutes}m ');
-  if (seconds > 0)
+    fields |= 0x10;
+  }
+  if (seconds > 0 && fields < 0x20) {
     result.write('${seconds}s ');
-  if (milliseconds > 0)
+    fields |= 0x08;
+  }
+  if (milliseconds > 0 && fields < 0x10) {
     result.write('${milliseconds}ms ');
-  if (microseconds > 0)
+    fields |= 0x04;
+  }
+  if (microseconds > 0 && fields < 0x08) {
     result.write('${microseconds}µs ');
+    fields |= 0x02;
+  }
 
   return result.toString().trimRight();
 }

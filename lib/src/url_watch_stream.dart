@@ -58,6 +58,8 @@ class UrlWatchStream<T> extends WatchStream<T> {
   }
 
   void _start() {
+    if (onLog != null)
+      onLog('starting periodic timer');
     assert(_active && _url != null);
     assert(_timer == null);
     _timer = new Timer.periodic(period, tick);
@@ -69,6 +71,8 @@ class UrlWatchStream<T> extends WatchStream<T> {
     assert(!_active || _url == null);
     _timer.cancel();
     _timer = null;
+    if (onLog != null)
+      onLog('stopped periodic timer');
   }
 
   bool _fetching = false;
@@ -92,14 +96,20 @@ class UrlWatchStream<T> extends WatchStream<T> {
             throw new Exception('unexpected error from ${_url.host} (${response.statusCode} ${response.reasonPhrase})');
         }
         add(parser(await response.transform(utf8.decoder).join('')));
+      } on Error catch (error, stack) {
+        rethrow;
       } catch (exception) {
         add(null);
         if (onLog != null)
           onLog('$exception');
         else
           rethrow;
+      } finally {
+        _fetching = false;
       }
-      _fetching = false;
+    } else {
+      if (onLog != null)
+        onLog('skipping fetch; previous fetch has not yet completed');
     }
   }
 }

@@ -6,8 +6,8 @@ import '../common.dart';
 import '../url_watch_stream.dart';
 import '../json.dart';
 
-const Duration _sunPowerPeriod = const Duration(seconds: 10);
-const Duration _sunPowerMargin = const Duration(seconds: 5);
+const Duration _sunPowerPeriod = const Duration(minutes: 2);
+const Duration _sunPowerMargin = const Duration(seconds: 15);
 
 class SunPowerMonitor {
   SunPowerMonitor({

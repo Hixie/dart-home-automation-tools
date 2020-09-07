@@ -10,13 +10,14 @@ import '../temperature.dart';
 import '../watch_stream.dart';
 
 // This is written for the RP32-IP Network Thermostat, V2.40.
+// It is an implementation of the "Net/X ASCII" protocol.
 // DIP switches are expected to be 0,1,1,0,1,0,1,0.
 // Scale is expected to be CELSIUS.
 // Min and max set points should be at default values.
 
 enum ThermostatStatus { heating, cooling, fan, idle }
 
-final bool verbose = false;
+final bool verbose = true;
 
 class _PendingCommand {
   _PendingCommand(this.message);
