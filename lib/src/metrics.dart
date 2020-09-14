@@ -363,31 +363,11 @@ class AirQualityParameter extends Measurement {
           aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
         );
       case Metric.ozone:
-        // This is based on the 8h average AQI breakpoints from the
-        // EPA, but generally we have instantaneous numbers so...
-        // BTW, when updating this, be careful with the units. People
+        // Highly variable; AQI should be based on averages.
+        // BTW, when implementing this, be careful with the units. People
         // measure this in ppb but breakpoints seem to be defined in ppm.
-        assert(units == MetricUnits.partsPerBillion);
-        return interpolateWithPoints(
-          input: value,
-          inputStopPoints: <double>[0.0, 54.0, 70.0, 85.0, 105.0, 200.0],
-          aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0],
-        );
-        // 1h average numbers:
-        // return interpolateWithPoints(
-        //   input: value,
-        //   inputStopPoints: <double>[0.0, 124.0, 164.0, 204.0, 404.0, 504.0, 604.0],
-        //   aqiStopPoints: <double>[0.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
-        // );
       case Metric.sulphurDioxide:
-        // range 0..200 is based on the 1hr average, 200..500 is based on 24h average.
-        // despite this we apply it to instantaneous numbers
-        assert(units == MetricUnits.partsPerBillion);
-        return interpolateWithPoints(
-          input: value,
-          inputStopPoints: <double>[0.0, 36.0, 76.0, 186.0, 304.0, 605.0, 805.0, 1004.0],
-          aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
-        );
+        // Highly variable; AQI should be based on averages.
       default:
         return null;
     }
