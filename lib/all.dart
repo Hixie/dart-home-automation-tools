@@ -19,5 +19,6 @@ export 'src/json.dart';
 export 'src/metrics.dart';
 export 'src/packet_buffer.dart';
 export 'src/radiation.dart';
+export 'src/table_record.dart';
 export 'src/temperature.dart';
 export 'src/watch_stream.dart';
