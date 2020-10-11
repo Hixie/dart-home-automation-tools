@@ -17,6 +17,7 @@ export 'src/devices/wake_on_lan.dart';
 export 'src/hash_codes.dart';
 export 'src/json.dart';
 export 'src/metrics.dart';
+export 'src/packet_buffer.dart';
 export 'src/radiation.dart';
 export 'src/temperature.dart';
 export 'src/watch_stream.dart';
