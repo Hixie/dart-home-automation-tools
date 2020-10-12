@@ -23,7 +23,7 @@ class TableRecord {
   final Uint8List data;
 
   int get checksum {
-    int hash = timestamp.microsecondsSinceEpoch;
+    int hash = timestamp.millisecondsSinceEpoch;
     hash ^= hash >> 32;
     hash &= 0xffffffff;
     for (int byte in data) {
@@ -48,7 +48,7 @@ class TableRecord {
       return _encoded;
     _encoded = Uint8List(size);
     ByteData view = _encoded.buffer.asByteData();
-    view.setUint64(0, timestamp.microsecondsSinceEpoch);
+    view.setUint64(0, timestamp.millisecondsSinceEpoch);
     _encoded.setRange(8, 8 + data.length, data);
     view.setUint64(8 + data.length, checksum);
     return _encoded;
@@ -57,13 +57,14 @@ class TableRecord {
   @override
   String toString() {
     StringBuffer buffer = StringBuffer();
+    buffer.write('@${timestamp.millisecondsSinceEpoch.toRadixString(16).padLeft(16, "0")}:');
     for (int index = 0; index < data.length; index += 1) {
+      buffer.write(' ');
       if (index > 0 && index % 8 == 0)
-        buffer.write(' ');
-      if (index > 0)
         buffer.write(' ');
       buffer.write(data[index].toRadixString(16).padLeft(2, "0"));
     }
+    buffer.write(' [${checksum.toRadixString(16).padLeft(16, "0")}]');
     return buffer.toString();
   }
 }
