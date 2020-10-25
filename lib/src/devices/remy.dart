@@ -60,6 +60,7 @@ class Remy {
   Remy({
     InternetAddress host,
     int port: 12649,
+    SecurityContext securityContext,
     @required this.username,
     @required this.password,
     this.onLog,
@@ -69,7 +70,7 @@ class Remy {
     this.onDisconnected,
   }) {
     assert(port != null);
-    _connect(host, port);
+    _connect(host, port, securityContext);
   }
 
   final String username;
@@ -86,7 +87,7 @@ class Remy {
 
   final List<String> _pendingMessages = <String>[];
 
-  Future<Null> _connect(InternetAddress host, int port) async {
+  Future<Null> _connect(InternetAddress host, int port, SecurityContext securityContext) async {
     do {
       try {
         if (host == null) {
@@ -95,7 +96,7 @@ class Remy {
             throw new Exception('Cannot lookup Remy\'s internet address: no results');
           host = hosts.first;
         }
-        _server = await SecureSocket.connect(host, port);
+        _server = await SecureSocket.connect(host, port, context: securityContext);
         _server.encoding = utf8;
         if (onUiUpdate != null) {
           _server.write('enable-ui\x00\x00\x00');
@@ -346,10 +347,11 @@ class _RemyMessageParser extends StreamTransformerInstance<List<int>, List<int>>
 }
 
 class RemyMultiplexer {
-  RemyMultiplexer(String username, String password, { this.onLog }) {
+  RemyMultiplexer(String username, String password, { this.onLog, SecurityContext securityContext }) {
     _remy = new Remy(
       username: username,
       password: password,
+      securityContext: securityContext,
       onUiUpdate: _handleUiUpdate,
       onNotification: _handleNotification,
       onLog: _log,
