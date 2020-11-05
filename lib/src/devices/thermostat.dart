@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
 import '../common.dart';
+import '../hash_codes.dart';
 import '../metrics.dart';
 import '../temperature.dart';
 import '../watch_stream.dart';
@@ -17,7 +19,7 @@ import '../watch_stream.dart';
 
 enum ThermostatStatus { heating, cooling, fan, idle }
 
-final bool verbose = true;
+final bool verbose = false;
 
 class _PendingCommand {
   _PendingCommand(this.message);
@@ -27,6 +29,79 @@ class _PendingCommand {
   final Completer<String> _completer = new Completer<String>();
 
   Future<String> get result => _completer.future;
+}
+
+enum ThermostatReportMode { off, cool, heat, auto }
+
+class ThermostatReport {
+  const ThermostatReport({
+    this.temperature,
+    this.mode,
+    this.fanActive,
+    this.overrideEnabled,
+    this.recoveryEnabled,
+    this.minPoint,
+    this.maxPoint,
+    this.active,
+  }) : assert(temperature >= -128),
+       assert(temperature <= 127),
+       assert(minPoint >= -128),
+       assert(minPoint <= 127),
+       assert(maxPoint >= -128),
+       assert(maxPoint <= 127);
+  
+  final int temperature; // 8 bits, signed int8
+  final int minPoint; // 8 bits, signed int8
+  final int maxPoint; // 8 bits, signed int8
+  final ThermostatReportMode mode; // 2 bits, ThermostatReportMode.index
+  final ThermostatReportMode active; // 2 bits, ThermostatReportMode.index but not "auto"
+  final bool fanActive; // 1 bit
+  final bool overrideEnabled; // 1 bit
+  final bool recoveryEnabled; // 1 bit
+
+  Uint8List encode() {
+    final ByteData byteData = ByteData(4);
+    byteData.setInt8(0, temperature);
+    byteData.setInt8(1, minPoint);
+    byteData.setInt8(2, maxPoint);
+    byteData.setUint8(3,
+      mode.index +                      // 0b00000011 0x01 0x02 (0x03)
+      active.index << 2 +               // 0b00001100 0x04 0x08 (0x0C)
+      (fanActive ? 0x10 : 0x00) +       // 0b00010000 0x10
+      (overrideEnabled ? 0x20 : 0x00) + // 0b00100000 0x20
+      (recoveryEnabled ? 0x40 : 0x00)   // 0b01000000 0x40
+    );
+    return byteData.buffer.asUint8List();
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType)
+      return false;
+    return other is ThermostatReport
+        && other.temperature == temperature
+        && other.minPoint == minPoint
+        && other.maxPoint == maxPoint
+        && other.mode == mode
+        && other.active == active 
+        && other.fanActive == fanActive
+        && other.overrideEnabled == overrideEnabled
+        && other.recoveryEnabled == recoveryEnabled;
+  }
+
+  @override
+  int get hashCode {
+    return hashValues(
+      temperature.hashCode,
+      minPoint.hashCode,
+      maxPoint.hashCode,
+      mode.hashCode,
+      active.hashCode,
+      fanActive.hashCode,
+      overrideEnabled.hashCode,
+      recoveryEnabled.hashCode,
+    );
+  }
 }
 
 class Thermostat {
@@ -41,6 +116,7 @@ class Thermostat {
   }) {
     _temperature = new HandlerWatchStream<Temperature>(_startPollingTemperature, _endPollingTemperature);
     _status = new HandlerWatchStream<ThermostatStatus>(_startPollingStatus, _endPollingStatus);
+    _report = new HandlerWatchStream<ThermostatReport>(_startPollingReport, _endPollingReport);
     _initialize();
   }
 
@@ -53,13 +129,20 @@ class Thermostat {
   final ErrorHandler onError;
   final LogCallback onLog;
 
+  bool _temperatureSubscriptionActive = false;
   WatchStream<Temperature> _temperature;
   WatchStream<Temperature> get temperature => _temperature;
   
+  bool _statusSubscriptionActive = false;
   WatchStream<ThermostatStatus> _status;
   WatchStream<ThermostatStatus> get status => _status;
 
+  bool _reportSubscriptionActive = false;
+  WatchStream<ThermostatReport> _report;
+  WatchStream<ThermostatReport> get report => _report;
+
   MeasurementStation _station;
+  bool _active = true;
 
   void _processStatus(String message) {
     assert(_station != null);
@@ -69,29 +152,65 @@ class Thermostat {
     List<String> fields = message.substring(5, message.length).split(',');
     if (fields.length != 10)
       throw 'Incorrect number of fields in status message from thermostat: $message';
-    final double temperatureValue = double.tryParse(fields[0]);
-    ThermostatStatus statusValue;
-    if (fields[9] == '1') {
-      if (fields[8] == 'COOL') {
-        statusValue = ThermostatStatus.cooling;
-      } else if (fields[8] == 'HEAT') {
-        statusValue = ThermostatStatus.heating;
-      } else {
-        throw 'Unknown thermostat mode "${fields[8]}" in status message: $message';
-      }
-    } else if (fields[9] == '0') {
-      if (fields[3] == 'FAN ON') {
-        statusValue = ThermostatStatus.fan;
-      } else if (fields[3] == 'FAN AUTO') {
-        statusValue = ThermostatStatus.idle;
-      } else {
-        throw 'Unknown thermostat fan mode "${fields[3]}" in status message: $message';
-      }
-    } else {
-      throw 'Unknown thermostat stage "${fields[9]}" in status message: $message';
+    double temperatureValue;
+    if (_temperatureSubscriptionActive || _reportSubscriptionActive) {
+      temperatureValue = double.tryParse(fields[0]);
+      if (_temperatureSubscriptionActive)
+        temperature.add(temperatureValue != null ? new ThermostatTemperature.C(temperatureValue, station: _station, timestamp: timestamp) : null);
     }
-    temperature.add(temperatureValue != null ? new ThermostatTemperature.C(temperatureValue, station: _station, timestamp: timestamp) : null);
-    status.add(statusValue);
+    if (_statusSubscriptionActive) {
+      ThermostatStatus statusValue;
+      if (fields[9] == '1') {
+        if (fields[8] == 'COOL') {
+          statusValue = ThermostatStatus.cooling;
+        } else if (fields[8] == 'HEAT') {
+          statusValue = ThermostatStatus.heating;
+        } else {
+          throw 'Unknown thermostat mode "${fields[8]}" in status message: $message';
+        }
+      } else if (fields[9] == '0') {
+        if (fields[3] == 'FAN ON') {
+          statusValue = ThermostatStatus.fan;
+        } else if (fields[3] == 'FAN AUTO') {
+          statusValue = ThermostatStatus.idle;
+        } else {
+          throw 'Unknown thermostat fan mode "${fields[3]}" in status message: $message';
+        }
+      } else {
+        throw 'Unknown thermostat stage "${fields[9]}" in status message: $message';
+      }
+      status.add(statusValue);
+    }
+    if (_reportSubscriptionActive) {
+      ThermostatReportMode mode;
+      switch (fields[2]) {
+        case 'OFF': mode = ThermostatReportMode.off; break;
+        case 'COOL': mode = ThermostatReportMode.cool; break;
+        case 'HEAT': mode = ThermostatReportMode.heat; break;
+        case 'AUTO': mode = ThermostatReportMode.auto; break;
+        default: throw 'Unknown thermostat mode "${fields[2]}" in status message: $message';
+      }
+      ThermostatReportMode active;
+      if (fields[9] == '0') {
+        active = ThermostatReportMode.off;
+      } else {
+        switch (fields[8]) {
+          case 'COOL': active = ThermostatReportMode.cool; break;
+          case 'HEAT': active = ThermostatReportMode.heat; break;
+          default: throw 'Unknown thermostat mode "${fields[8]}" in status message: $message';
+        }
+      }
+      report.add(ThermostatReport(
+        temperature: temperatureValue.round(),
+        minPoint: double.tryParse(fields[6]).round(),
+        maxPoint: double.tryParse(fields[7]).round(),
+        mode: mode,
+        active: active,
+        fanActive: fields[3] == 'FAN ON',
+        overrideEnabled: fields[4] == 'YES',
+        recoveryEnabled: fields[5] == 'YES',
+      ));
+    }
   }
 
   Completer<Null> _signal = new Completer<Null>();
@@ -99,10 +218,6 @@ class Thermostat {
     _signal.complete();
     _signal = new Completer<Null>();
   }
-
-  bool _active = true;
-  bool _temperatureSubscriptionActive = false;
-  bool _statusSubscriptionActive = false;
 
   void _startPollingTemperature(Sink<Temperature> sink) {
     assert(!_temperatureSubscriptionActive);
@@ -125,6 +240,18 @@ class Thermostat {
   void _endPollingStatus() {
     assert(_statusSubscriptionActive);
     _statusSubscriptionActive = false;
+    _triggerSignal();
+  }
+
+  void _startPollingReport(Sink<ThermostatReport> sink) {
+    assert(!_reportSubscriptionActive);
+    _reportSubscriptionActive = true;
+    _triggerSignal();
+  }
+
+  void _endPollingReport() {
+    assert(_reportSubscriptionActive);
+    _reportSubscriptionActive = false;
     _triggerSignal();
   }
 
@@ -222,7 +349,7 @@ class Thermostat {
     return command.result;
   }
 
-  bool get _connectionRequired => _temperatureSubscriptionActive || _statusSubscriptionActive || _commands.isNotEmpty;
+  bool get _connectionRequired => _temperatureSubscriptionActive || _statusSubscriptionActive || _reportSubscriptionActive || _commands.isNotEmpty;
 
   Future<Null> _initialize() async {
     while (_active) {
@@ -276,7 +403,7 @@ class Thermostat {
               _commands.remove(key);
               command._completer.complete(result);
             }
-            if (_temperatureSubscriptionActive || _statusSubscriptionActive) {
+            if (_temperatureSubscriptionActive || _statusSubscriptionActive || _reportSubscriptionActive) {
               String result = await _rawSend(connection, buffer, 'RAS1');
               _processStatus(result);
               if (_commands.isEmpty)
