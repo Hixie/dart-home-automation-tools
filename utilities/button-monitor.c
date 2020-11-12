@@ -2,6 +2,9 @@
 // sudo chown root ./button-monitor; sudo chmod +s ./button-monitor
 // ./button-monitor
 
+// to install bcm2835 see http://www.airspayce.com/mikem/bcm2835/
+// you have to download the tarball and compile it locally
+
 // Inspired by a sample by Mike McCauley.
 
 #include <bcm2835.h>
