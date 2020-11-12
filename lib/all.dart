@@ -1,6 +1,7 @@
 library home_automation_tools;
 
 export 'src/common.dart';
+export 'src/databases/others.dart';
 export 'src/devices/airnow.dart';
 export 'src/devices/cloudbit.dart';
 export 'src/devices/cloudbit_cloud.dart';
