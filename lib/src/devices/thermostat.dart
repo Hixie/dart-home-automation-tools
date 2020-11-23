@@ -114,9 +114,9 @@ class Thermostat {
     this.onError,
     this.onLog,
   }) {
-    _temperature = new HandlerWatchStream<Temperature>(_startPollingTemperature, _endPollingTemperature);
-    _status = new HandlerWatchStream<ThermostatStatus>(_startPollingStatus, _endPollingStatus);
-    _report = new HandlerWatchStream<ThermostatReport>(_startPollingReport, _endPollingReport);
+    _temperature = new HandlerWatchStream<Temperature>(_startPollingTemperature, _endPollingTemperature, staleTimeout: period + const Duration(seconds: 5));
+    _status = new HandlerWatchStream<ThermostatStatus>(_startPollingStatus, _endPollingStatus, staleTimeout: period + const Duration(seconds: 5));
+    _report = new HandlerWatchStream<ThermostatReport>(_startPollingReport, _endPollingReport, staleTimeout: period + const Duration(seconds: 5));
     _initialize();
   }
 

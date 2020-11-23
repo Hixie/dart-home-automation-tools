@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:home_automation_tools/all.dart';
+import '../table_record.dart';
 
 enum DishwasherMode { dirty, active, clean, unknown }
 

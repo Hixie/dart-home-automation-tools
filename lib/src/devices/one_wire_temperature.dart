@@ -14,7 +14,7 @@ class OneWireTemperature {
     this.onLog,
     this.onError,
   }) {
-    _temperature = new HandlerWatchStream<Temperature>(_start, _end);
+    _temperature = new HandlerWatchStream<Temperature>(_start, _end, staleTimeout: period + const Duration(seconds: 5));
     _tick(null);
   }
 

@@ -7,7 +7,7 @@ import '../table_record.dart';
 
 class DatabaseStreamingClient {
   DatabaseStreamingClient(this.hostName, this.port, this.securityContext, this.tableId, this.recordSize) {
-    _controller = StreamController(onListen: _listen, onCancel: _cancel);
+    _controller = StreamController<TableRecord>(onListen: _listen, onCancel: _cancel);
   }
 
   final String hostName;

@@ -11,7 +11,9 @@ class UrlWatchStream<T> extends WatchStream<T> {
   UrlWatchStream(this.client, this.period, this.parser, this.onLog, {
     String url,
     this.authorization,
-  }) {
+    Duration staleTimeout,
+  }) : assert(staleTimeout == null || staleTimeout > period),
+       super(staleTimeout: staleTimeout ?? period + const Duration(minutes: 5)) {
     this.url = url;
   }
 
