@@ -9,8 +9,9 @@ class ProcessMonitor {
     this.executable,
     this.onLog,
     this.onError,
+    Duration staleTimeout,
   }) {
-    _output = new HandlerWatchStream<int>(_start, _end);
+    _output = new HandlerWatchStream<int>(_start, _end, staleTimeout: staleTimeout);
   }
 
   final String executable;
