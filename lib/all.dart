@@ -3,6 +3,7 @@ library home_automation_tools;
 export 'src/common.dart';
 export 'src/databases/dishwasher.dart';
 export 'src/databases/others.dart';
+export 'src/databases/sensors.dart';
 export 'src/devices/airnow.dart';
 export 'src/devices/cloudbit.dart';
 export 'src/devices/cloudbit_cloud.dart';
