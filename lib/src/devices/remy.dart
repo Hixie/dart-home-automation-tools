@@ -48,10 +48,46 @@ class RemyToDo {
 }
 
 class RemyUi {
-  const RemyUi(this.buttons, this.messages, this.todos);
+  RemyUi(this.buttons, this.messages, this.todos);
   final Set<RemyButton> buttons;
   final Set<RemyMessage> messages;
   final Set<RemyToDo> todos;
+
+  RemyButton getButtonById(String id) {
+    Iterable<RemyButton> candidates = buttons.where((RemyButton button) => button.id == id);
+    if (candidates.isEmpty)
+      return null;
+    return candidates.single;
+  }
+
+  Map<String, RemyMessage> _messageLabelIndex;
+
+  bool hasNotification(String label) {
+    _messageLabelIndex ??= Map<String, RemyMessage>.fromEntries(messages.map<MapEntry<String, RemyMessage>>((RemyMessage notification) {
+      return MapEntry<String, RemyMessage>(
+        notification.label,
+        notification,
+      );
+    }));
+    return _messageLabelIndex.containsKey(label);
+  }
+
+  Map<String, Set<RemyMessage>> _messageClassIndex;
+
+  Iterable<RemyMessage> getMessagesByClass(String className) sync* {
+    if (_messageClassIndex == null) {
+      _messageClassIndex = <String, Set<RemyMessage>>{};
+      for (final RemyMessage message in messages) {
+        for (final String messageClass in message.classes) {
+          _messageClassIndex.putIfAbsent(messageClass, () => <RemyMessage>{})
+            ..add(message);
+        }
+      }
+    }
+    if (_messageClassIndex.containsKey(className))
+      yield* _messageClassIndex[className];
+  }
+
   @override
   String toString() => 'RemyUi:\n${messages.join("\n")}\n${todos.join("\n")}\n${buttons.join("\n")}';
 }
@@ -289,8 +325,9 @@ class Remy {
       do {
         // TODO(ianh): Move pending messages into a list that waits for confirmation
         // and brings them back into the pending list if not confirmed in a short time
-        while (_pendingMessages.isNotEmpty)
+        while (_pendingMessages.isNotEmpty) {
           _server.write(_pendingMessages.removeAt(0));
+        }
         _signalPendingMessage = new Completer<bool>();
         await _server.flush();
       } while (await _signalPendingMessage.future);
@@ -371,17 +408,20 @@ class RemyMultiplexer {
   final Map<String, WatchStream<bool>> _notificationStatuses = <String, WatchStream<bool>>{};
   final Map<String, StreamController<String>> _notificationsWithArguments = <String, StreamController<String>>{};
   final StreamController<RemyNotification> _notifications = new StreamController<RemyNotification>.broadcast();
+  final StreamController<RemyUi> _currentStateStream = new StreamController<RemyUi>.broadcast();
 
   Future<Null> get ready => _ready.future;
   final Completer<Null> _ready = new Completer<Null>();
 
   Stream<RemyNotification> get notifications => _notifications.stream;
+  Stream<RemyUi> get currentStateStream => _currentStateStream.stream;
 
   RemyUi get currentState => _remy.currentState;
 
   Set<String> _lastLabels = new Set<String>();
 
   void _handleUiUpdate(RemyUi ui) {
+    assert(currentState == ui);
     if (!_ready.isCompleted)
       _ready.complete();
     Set<String> labels = new HashSet<String>.from(ui.messages.map((RemyNotification notification) => notification.label));
@@ -399,6 +439,7 @@ class RemyMultiplexer {
         _notificationsWithArguments[prefix].add(label.substring(spaceIndex + 1));
     }
     _lastLabels = labels;
+    _currentStateStream.add(ui);
   }
 
   void _handleNotification(RemyNotification notification) {
@@ -430,7 +471,7 @@ class RemyMultiplexer {
 
   bool hasNotification(String label) {
     assert(_remy.currentState != null);
-    return _remy.currentState.messages.any((RemyNotification notification) => notification.label == label);
+    return _remy.currentState.hasNotification(label);
   }
 
   void pushButton(RemyButton button) {
