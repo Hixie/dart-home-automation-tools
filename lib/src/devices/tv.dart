@@ -866,7 +866,7 @@ class Television {
   }
 
   Future<Null> showMessage(String message) async {
-    await sendCommand('KLCD', argument: message);
+    await sendCommand('KLCD', argument: message, errorIsOk: true); // we don't check if the tv is on first, so error responses are common
   }
 
   Future<Null> nextInput() async {
@@ -1065,11 +1065,6 @@ class Television {
   Future<String> get name => readValue('TVNM', argument: '1');
   Future<String> get model => readValue('MNRD', argument: '1');
   Future<String> get softwareVersion => readValue('SWVN', argument: '1');
-
-  Future<Null> displayMessage(String value) async {
-    assert(value != null);
-    await sendCommand('KLCD', argument: value);
-  }
 
   Future<bool> get demoOverlay async {
     final String response = await readValue('DMSL');
