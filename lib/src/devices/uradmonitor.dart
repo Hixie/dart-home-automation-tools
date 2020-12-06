@@ -97,6 +97,13 @@ class URadMonitorRadiation extends Radiation {
   }) : doseRate = _detectorFactor(detector) * countsPerMinute,
        super(station: station, timestamp: timestamp);
 
+  URadMonitorRadiation.fromDoseRate({
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    @required this.doseRate,
+  }) : countsPerMinute = null,
+       super(station: station, timestamp: timestamp);
+
   final int countsPerMinute;
 
   @override

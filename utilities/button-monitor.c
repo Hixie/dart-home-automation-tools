@@ -10,8 +10,8 @@
 #include <bcm2835.h>
 #include <stdio.h>
 
-#define BUTTONA_PIN RPI_BPLUS_GPIO_J8_16
-#define BUTTONB_PIN RPI_BPLUS_GPIO_J8_18
+#define BUTTONA_PIN RPI_BPLUS_GPIO_J8_16 // GPIO23
+#define BUTTONB_PIN RPI_BPLUS_GPIO_J8_18 // GPIO24
 
 int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IONBF, 0);
