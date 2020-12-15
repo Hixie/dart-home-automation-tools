@@ -19,6 +19,8 @@
 // but with the minipitft taking up both 3.3v rail pins
 // it's just easier to use an output pin.
 
+// RPI_BPLUS_GPIO_J8_XX refers to pin XX on the pinout, not the "BCM"
+// number, nor the GPIO number.
 #define SENSOR_PIN RPI_BPLUS_GPIO_J8_32 // GPIO12 (sensing pin)
 #define POWER_PIN RPI_BPLUS_GPIO_J8_31 // GPIO6 (output 3.3v)
 
