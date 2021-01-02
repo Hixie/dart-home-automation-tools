@@ -11,7 +11,9 @@ class UrlWatchStream<T> extends WatchStream<T> {
   UrlWatchStream(this.client, this.period, this.parser, this.onLog, {
     String url,
     this.authorization,
-  }) {
+    Duration staleTimeout,
+  }) : assert(staleTimeout == null || staleTimeout > period),
+       super(staleTimeout: staleTimeout ?? period + const Duration(minutes: 5)) {
     this.url = url;
   }
 
@@ -58,6 +60,8 @@ class UrlWatchStream<T> extends WatchStream<T> {
   }
 
   void _start() {
+    if (onLog != null)
+      onLog('starting periodic timer');
     assert(_active && _url != null);
     assert(_timer == null);
     _timer = new Timer.periodic(period, tick);
@@ -69,6 +73,8 @@ class UrlWatchStream<T> extends WatchStream<T> {
     assert(!_active || _url == null);
     _timer.cancel();
     _timer = null;
+    if (onLog != null)
+      onLog('stopped periodic timer');
   }
 
   bool _fetching = false;
@@ -91,15 +97,21 @@ class UrlWatchStream<T> extends WatchStream<T> {
             await response.drain();
             throw new Exception('unexpected error from ${_url.host} (${response.statusCode} ${response.reasonPhrase})');
         }
-        add(parser(await response.transform(UTF8.decoder).join('')));
+        add(parser(await response.transform(utf8.decoder).join('')));
+      } on Error {
+        rethrow;
       } catch (exception) {
         add(null);
         if (onLog != null)
           onLog('$exception');
         else
           rethrow;
+      } finally {
+        _fetching = false;
       }
-      _fetching = false;
+    } else {
+      if (onLog != null)
+        onLog('skipping fetch; previous fetch has not yet completed');
     }
   }
 }

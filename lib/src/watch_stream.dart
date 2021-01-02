@@ -13,6 +13,10 @@ typedef void HandleData<T>(T data);
 ///
 /// - never raises an error.
 abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
+  WatchStream({ this.staleTimeout });
+
+  final Duration staleTimeout;
+
   Set<_WatchStreamSubscription<T>> _subscriptions = new Set<_WatchStreamSubscription<T>>();
 
   void handleStart();
@@ -36,9 +40,19 @@ abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
 
   T _value;
 
+  Timer _staleTimer;
+
   // return value is whether this changed the status
   @override
   bool add(T value) {
+    _staleTimer?.cancel();
+    _staleTimer = null;
+    if (staleTimeout != null && value != null) {
+      _staleTimer = Timer(staleTimeout, () {
+        _staleTimer = null;
+        add(null);
+      });
+    }
     if (_value == value)
       return false;
     _value = value;
@@ -54,7 +68,8 @@ abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
   void close() {
     for (_WatchStreamSubscription<T> subscription in _subscriptions)
       subscription._dispose();
-    handleEnd();
+    if (_subscriptions.isNotEmpty)
+      handleEnd();
     _subscriptions = null;
   }
 
@@ -70,7 +85,7 @@ abstract class WatchStream<T> extends Stream<T> implements Sink<T> {
 }
 
 class HandlerWatchStream<T> extends WatchStream<T> {
-  HandlerWatchStream(this._onStart, this._onEnd);
+  HandlerWatchStream(this._onStart, this._onEnd, { Duration staleTimeout }) : super(staleTimeout: staleTimeout);
 
   final SinkCallback<T> _onStart; // passes "this" as the sink argument
   
@@ -90,6 +105,8 @@ class HandlerWatchStream<T> extends WatchStream<T> {
 }
 
 class AlwaysOnWatchStream<T> extends WatchStream<T> {
+  AlwaysOnWatchStream({ Duration staleTimeout }) : super(staleTimeout: staleTimeout);
+
   @override
   void handleStart() { }
 
@@ -157,8 +174,8 @@ class _WatchStreamSubscription<T> extends StreamSubscription<T> {
   bool get isPaused => _paused > 0;
   
   @override
-  Future/*<E>*/ asFuture/*<E>*/([var/*=E*/ futureValue]) {
-    Completer/*<E>*/ completer = new Completer/*<E>*/();
+  Future<E> asFuture<E>([E futureValue]) {
+    Completer<E> completer = new Completer<E>();
     _handleDone = () {
       completer.complete(futureValue);
     };

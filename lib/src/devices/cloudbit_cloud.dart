@@ -69,7 +69,7 @@ class LittleBitsCloud extends CloudBitProvider {
   Future<HttpClientRequest> openRequest(String method, String url) async {
     log(null, '$method $url', level: LogLevel.verbose);
     final HttpClientRequest request = await _httpClient.openUrl(method, Uri.parse(url));
-    request.headers.set(HttpHeaders.AUTHORIZATION, 'Bearer $authToken');
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $authToken');
     return request;
   }
 
@@ -90,10 +90,10 @@ class LittleBitsCloud extends CloudBitProvider {
           await response.drain();
           throw new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})');
       }
-      final String rawData = await response.transform(UTF8.decoder).single;
+      final String rawData = await response.transform(utf8.decoder).single;
       await response.drain();
       try {
-        data = JSON.decode(rawData);
+        data = json.decode(rawData);
       } on FormatException {
         throw new CloudBitContractViolation('unexpected data received from littlebits cloud (not JSON: "$rawData")');
       }
@@ -177,11 +177,11 @@ class _CloudBit extends CloudBit {
           await response.drain();
           throw new CloudBitContractViolation('unexpected error from littlebits cloud (${response.statusCode} ${response.reasonPhrase})', this);
       }
-      final String rawData = await response.transform(UTF8.decoder).single;
+      final String rawData = await response.transform(utf8.decoder).single;
       await response.drain();
       dynamic device;
       try {
-        device = JSON.decode(rawData);
+        device = json.decode(rawData);
       } on FormatException {
         throw new CloudBitContractViolation('unexpected data received from littlebits cloud (not JSON: "$rawData")', this);
       }
@@ -225,7 +225,7 @@ class _CloudBit extends CloudBit {
       request.headers.contentType = new ContentType('application', 'json');
       request.headers.contentLength = -1;
       int _sentValue = _pendingSendValue;
-      request.write(JSON.encode(<String, int>{
+      request.write(json.encode(<String, int>{
         'percent': _pendingSendValue,
         'duration_ms': duration == null ? -1 : duration.inMilliseconds,
       }));
@@ -251,7 +251,7 @@ class _CloudBit extends CloudBit {
           await response.drain();
           break;
         case 404:
-          final String message = await response.transform(UTF8.decoder).join();
+          final String message = await response.transform(utf8.decoder).join();
           await cloud._reportError(
             exception: new CloudBitNotConnected(this, 'trying to send $_pendingSendValue: $message'),
             connected: _connected,
@@ -363,7 +363,7 @@ class _CloudBit extends CloudBit {
         await response.drain();
         return _error(new CloudBitRateLimitException(this), cloud.rateLimitDelay);
       case 404:
-        final String message = await response.transform(UTF8.decoder).join();
+        final String message = await response.transform(utf8.decoder).join();
         cloud.log(deviceId, '$displayName: not connected; delaying ${cloud.noConnectionDelay}: 404, $message', level: LogLevel.verbose);
         // no need to drain since we read the message above
         return _error(new CloudBitNotConnected(this, 'attempting to connect to listen to data'), cloud.noConnectionDelay);
@@ -377,7 +377,7 @@ class _CloudBit extends CloudBit {
     }
     Completer<Null> completer = new Completer<Null>();
     _events = response
-      .transform(UTF8.decoder)
+      .transform(utf8.decoder)
       .transform(const LineSplitter())
       .transform(new StreamTransformer<String, dynamic>.fromHandlers(
         handleData: (String data, EventSink<dynamic> sink) {
@@ -385,7 +385,7 @@ class _CloudBit extends CloudBit {
             return;
           if (data.startsWith('data:')) {
             try {
-              sink.add(JSON.decode(data.substring(5))); // 5 is the length of the string 'data:'
+              sink.add(json.decode(data.substring(5))); // 5 is the length of the string 'data:'
               return;
             } on FormatException {
               // absorb exception; we'll report it below
@@ -439,7 +439,7 @@ class _CloudBit extends CloudBit {
                 // We're still connected to the cloud, so only report the error, don't
                 // call _error (which will disconnect and reconnect).
                 cloud._reportError(exception: new CloudBitNotConnected(this, 'listening for data'), connected: wasConnected);
-                cloud.log(deviceId, JSON.encode(event), level: LogLevel.verbose);
+                cloud.log(deviceId, json.encode(event), level: LogLevel.verbose);
                 assert(_connected == false);
                 break;
               case 2: // connected

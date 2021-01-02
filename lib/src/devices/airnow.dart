@@ -28,7 +28,7 @@ class AirNowAirQualityMonitor {
   MeasurementPacket _decodeData(String value) {
     List<AirQualityParameter> parameters = <AirQualityParameter>[];
     try {
-      for (Json entry in Json.parse(value).asIterable()) {
+      for (dynamic entry in Json.parse(value).asIterable()) {
         parameters.add(new AirNowAirQualityParameter(
           station: new MeasurementStation(
             latitude: entry.Latitude.toDouble(),
@@ -37,6 +37,7 @@ class AirNowAirQualityMonitor {
             agencyName: entry.AgencyName.toString(),
             aqsCode: entry.FullAQSCode.toString(),
             internationalAqsCode: entry.internationalAqsCode.toString(),
+            outside: true,
           ),
           timestamp: DateTime.parse('${entry.UTC}Z'),
           parameterName: entry.Parameter.toString(),

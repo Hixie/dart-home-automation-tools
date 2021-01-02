@@ -1,3 +1,7 @@
 name: home_automation_tools
+
+environment:
+  sdk: '>=2.3.0 <3.0.0'
+
 dependencies:
   meta: '>=1.0.4'

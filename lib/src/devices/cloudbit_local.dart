@@ -34,7 +34,7 @@ class LittleBitsLocalServer extends CloudBitProvider {
   Completer<Null> _ready = new Completer<Null>();
 
   Future<Null> _initialize() async {
-    _socket = await RawDatagramSocket.bind(InternetAddress.ANY_IP_V4, 2020);
+    _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 2020);
     _socket.listen(_listener);
     _ready.complete();
     log(null, 'initialized littlebits local cloud manager');
@@ -86,11 +86,9 @@ class Localbit extends CloudBit {
   int _value;
   int _color;
 
-  bool _ready = false;
-
   static Uint8List _parseMac(String deviceId) {
     Uint8List result = new Uint8List(8); // room for a 64 bit integer
-    new ByteData.view(result.buffer).setUint64(0, int.parse(deviceId, radix: 16) << 16, Endianness.BIG_ENDIAN);
+    new ByteData.view(result.buffer).setUint64(0, int.parse(deviceId, radix: 16) << 16, Endian.big);
     return result.sublist(0, 6); // MAC addresses are only actually 48 bits
   }
 
@@ -150,7 +148,7 @@ class Localbit extends CloudBit {
 
   Future<Null> _addMacAndTransmit(Uint8List buffer) async {
     try {
-      List<InternetAddress> hosts = await InternetAddress.lookup(hostname, type: InternetAddressType.IP_V4)
+      List<InternetAddress> hosts = await InternetAddress.lookup(hostname, type: InternetAddressType.IPv4)
         .timeout(const Duration(seconds: 30));
       if (hosts.isEmpty) {
         server.log(deviceId, '$displayName: failed to resolve "$hostname"');
@@ -263,7 +261,7 @@ class Localbit extends CloudBit {
     payload[0] = color;
     payload[1] = (scrollOffset >> 8) & 0xFF;
     payload[2] = scrollOffset & 0xFF;
-    sendLEDMatrixMessage(MatrixMessageType.text, presentation, _concatenate(payload, ASCII.encode(message)));
+    sendLEDMatrixMessage(MatrixMessageType.text, presentation, _concatenate(payload, ascii.encode(message)));
   }
 
   void sendImage(MatrixBitmap image, { MatrixPresentation presentation: MatrixPresentation.one }) {

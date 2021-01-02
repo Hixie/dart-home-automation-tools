@@ -48,10 +48,46 @@ class RemyToDo {
 }
 
 class RemyUi {
-  const RemyUi(this.buttons, this.messages, this.todos);
+  RemyUi(this.buttons, this.messages, this.todos);
   final Set<RemyButton> buttons;
   final Set<RemyMessage> messages;
   final Set<RemyToDo> todos;
+
+  RemyButton getButtonById(String id) {
+    Iterable<RemyButton> candidates = buttons.where((RemyButton button) => button.id == id);
+    if (candidates.isEmpty)
+      return null;
+    return candidates.single;
+  }
+
+  Map<String, RemyMessage> _messageLabelIndex;
+
+  bool hasNotification(String label) {
+    _messageLabelIndex ??= Map<String, RemyMessage>.fromEntries(messages.map<MapEntry<String, RemyMessage>>((RemyMessage notification) {
+      return MapEntry<String, RemyMessage>(
+        notification.label,
+        notification,
+      );
+    }));
+    return _messageLabelIndex.containsKey(label);
+  }
+
+  Map<String, Set<RemyMessage>> _messageClassIndex;
+
+  Iterable<RemyMessage> getMessagesByClass(String className) sync* {
+    if (_messageClassIndex == null) {
+      _messageClassIndex = <String, Set<RemyMessage>>{};
+      for (final RemyMessage message in messages) {
+        for (final String messageClass in message.classes) {
+          _messageClassIndex.putIfAbsent(messageClass, () => <RemyMessage>{})
+            ..add(message);
+        }
+      }
+    }
+    if (_messageClassIndex.containsKey(className))
+      yield* _messageClassIndex[className];
+  }
+
   @override
   String toString() => 'RemyUi:\n${messages.join("\n")}\n${todos.join("\n")}\n${buttons.join("\n")}';
 }
@@ -60,6 +96,7 @@ class Remy {
   Remy({
     InternetAddress host,
     int port: 12649,
+    SecurityContext securityContext,
     @required this.username,
     @required this.password,
     this.onLog,
@@ -69,7 +106,7 @@ class Remy {
     this.onDisconnected,
   }) {
     assert(port != null);
-    _connect(host, port);
+    _connect(host, port, securityContext);
   }
 
   final String username;
@@ -86,7 +123,7 @@ class Remy {
 
   final List<String> _pendingMessages = <String>[];
 
-  Future<Null> _connect(InternetAddress host, int port) async {
+  Future<Null> _connect(InternetAddress host, int port, SecurityContext securityContext) async {
     do {
       try {
         if (host == null) {
@@ -95,8 +132,8 @@ class Remy {
             throw new Exception('Cannot lookup Remy\'s internet address: no results');
           host = hosts.first;
         }
-        _server = await SecureSocket.connect(host, port);
-        _server.encoding = UTF8;
+        _server = await SecureSocket.connect(host, port, context: securityContext);
+        _server.encoding = utf8;
         if (onUiUpdate != null) {
           _server.write('enable-ui\x00\x00\x00');
           await _server.flush().catchError(
@@ -108,7 +145,7 @@ class Remy {
           onConnected();
         _keepAlive = new Timer.periodic(const Duration(seconds: 60), (Timer t) => ping());
         await Future.any(<Future<Null>>[
-          _listen(_server.transform(_RemyMessageParser.getTransformer(3))),
+          _listen(_server.cast<List<int>>().transform(_RemyMessageParser.getTransformer(3))),
           _writeLoop(),
           _closed.future,
         ]);
@@ -153,20 +190,20 @@ class Remy {
       return;
     }
     List<List<int>> parts = _nullSplit(bytes, 2).toList();
-    if (UTF8.decode(parts[0]) == 'update') {
+    if (utf8.decode(parts[0]) == 'update') {
       if (onUiUpdate != null) {
         final Map<String, RemyButton> buttons = <String, RemyButton>{};
         final Set<RemyMessage> messages = new Set<RemyMessage>();
         final Set<RemyToDo> todos = new Set<RemyToDo>();
         for (List<int> entry in parts.skip(1)) {
-          final List<String> data = _nullSplit(entry, 1).map/*<String>*/(UTF8.decode).toList();
+          final List<String> data = _nullSplit(entry, 1).map<String>(utf8.decode).toList();
           if (data.isEmpty) {
             if (onLog != null)
-              onLog('invalid data packet from Remy (has empty entry in UI update): ${UTF8.decode(bytes)}');
+              onLog('invalid data packet from Remy (has empty entry in UI update): ${utf8.decode(bytes)}');
           } else if (data[0] == 'button') {
             if (data.length < 4) {
               if (onLog != null)
-                onLog('invalid data packet from Remy (insufficient data in button packet): ${UTF8.decode(bytes)}');
+                onLog('invalid data packet from Remy (insufficient data in button packet): ${utf8.decode(bytes)}');
             } else if (buttons.containsKey(data[1])) {
               if (onLog != null)
                 onLog('received duplicate button ID');
@@ -176,19 +213,13 @@ class Remy {
           } else if (data[0] == 'message') {
             if (data.length < 4) {
               if (onLog != null)
-                onLog('invalid data packet from Remy (insufficient data in message packet): ${UTF8.decode(bytes)}');
+                onLog('invalid data packet from Remy (insufficient data in message packet): ${utf8.decode(bytes)}');
             } else {
               messages.add(new RemyMessage(
                 data[1],
                 new Set<String>.from(data[2].split(' ')),
-                int.parse(
-                  data[3],
-                  onError: (String source) {
-                    if (onLog != null)
-                      onLog('unexpected "numeric" data from Remy: $source');
-                  },
-                ),
-                data.sublist(4).map/*<RemyButton>*/((String id) {
+                _parseEscalationLevel(data[3]),
+                data.sublist(4).map<RemyButton>((String id) {
                   if (buttons.containsKey(id))
                     return buttons[id];
                   if (onLog != null)
@@ -200,24 +231,18 @@ class Remy {
           } else if (data[0] == 'todo') {
             if (data.length < 5) {
               if (onLog != null)
-                onLog('invalid data packet from Remy (insufficient data in todo packet): ${UTF8.decode(bytes)}');
+                onLog('invalid data packet from Remy (insufficient data in todo packet): ${utf8.decode(bytes)}');
             } else {
               todos.add(new RemyToDo(
                 data[1],
                 data[2],
                 new Set<String>.from(data[3].split(' ')),
-                int.parse(
-                  data[4],
-                  onError: (String source) {
-                    if (onLog != null)
-                      onLog('unexpected "numeric" data from Remy: $source');
-                  },
-                ),
+                _parseEscalationLevel(data[4]),
               ));
             }
           } else {
             if (onLog != null)
-              onLog('unexpected data from Remy: ${UTF8.decode(bytes)}');
+              onLog('unexpected data from Remy: ${utf8.decode(bytes)}');
           }
         }
         _currentState = new RemyUi(
@@ -228,22 +253,16 @@ class Remy {
         onUiUpdate(currentState);
       }
     } else {
-      final List<String> data = _nullSplit(parts[0], 1).map<String>(UTF8.decode).toList();
+      final List<String> data = _nullSplit(parts[0], 1).map<String>(utf8.decode).toList();
       if (data.length < 3) {
         if (onLog != null)
-          onLog('invalid data packet from Remy (insufficient data in notification packet): ${UTF8.decode(bytes)}');
+          onLog('invalid data packet from Remy (insufficient data in notification packet): ${utf8.decode(bytes)}');
       } else {
         if (onNotification != null) {
           onNotification(new RemyNotification(
             data[1],
             new Set<String>.from(data[2].split(' ')),
-            int.parse(
-              data[0],
-              onError: (String source) {
-                if (onLog != null)
-                  onLog('unexpected "numeric" data from Remy: $source');
-              },
-            ),
+            _parseEscalationLevel(data[0]),
           ));
         }
       }
@@ -268,6 +287,16 @@ class Remy {
       index += 1;
     }
     yield bytes.sublist(start, index);
+  }
+
+  int _parseEscalationLevel(String value) {
+    int escalationLevel = int.tryParse(value);
+    if (escalationLevel == null) {
+      if (onLog != null)
+        onLog('unexpected "numeric" data from Remy: $value');
+      escalationLevel = 0;
+    }
+    return escalationLevel;
   }
 
   void pushButton(RemyButton button) {
@@ -296,8 +325,9 @@ class Remy {
       do {
         // TODO(ianh): Move pending messages into a list that waits for confirmation
         // and brings them back into the pending list if not confirmed in a short time
-        while (_pendingMessages.isNotEmpty)
+        while (_pendingMessages.isNotEmpty) {
           _server.write(_pendingMessages.removeAt(0));
+        }
         _signalPendingMessage = new Completer<bool>();
         await _server.flush();
       } while (await _signalPendingMessage.future);
@@ -354,10 +384,11 @@ class _RemyMessageParser extends StreamTransformerInstance<List<int>, List<int>>
 }
 
 class RemyMultiplexer {
-  RemyMultiplexer(String username, String password, { this.onLog }) {
+  RemyMultiplexer(String username, String password, { this.onLog, SecurityContext securityContext }) {
     _remy = new Remy(
       username: username,
       password: password,
+      securityContext: securityContext,
       onUiUpdate: _handleUiUpdate,
       onNotification: _handleNotification,
       onLog: _log,
@@ -377,17 +408,20 @@ class RemyMultiplexer {
   final Map<String, WatchStream<bool>> _notificationStatuses = <String, WatchStream<bool>>{};
   final Map<String, StreamController<String>> _notificationsWithArguments = <String, StreamController<String>>{};
   final StreamController<RemyNotification> _notifications = new StreamController<RemyNotification>.broadcast();
+  final StreamController<RemyUi> _currentStateStream = new StreamController<RemyUi>.broadcast();
 
   Future<Null> get ready => _ready.future;
   final Completer<Null> _ready = new Completer<Null>();
 
   Stream<RemyNotification> get notifications => _notifications.stream;
+  Stream<RemyUi> get currentStateStream => _currentStateStream.stream;
 
   RemyUi get currentState => _remy.currentState;
 
   Set<String> _lastLabels = new Set<String>();
 
   void _handleUiUpdate(RemyUi ui) {
+    assert(currentState == ui);
     if (!_ready.isCompleted)
       _ready.complete();
     Set<String> labels = new HashSet<String>.from(ui.messages.map((RemyNotification notification) => notification.label));
@@ -405,6 +439,7 @@ class RemyMultiplexer {
         _notificationsWithArguments[prefix].add(label.substring(spaceIndex + 1));
     }
     _lastLabels = labels;
+    _currentStateStream.add(ui);
   }
 
   void _handleNotification(RemyNotification notification) {
@@ -436,7 +471,7 @@ class RemyMultiplexer {
 
   bool hasNotification(String label) {
     assert(_remy.currentState != null);
-    return _remy.currentState.messages.any((RemyNotification notification) => notification.label == label);
+    return _remy.currentState.hasNotification(label);
   }
 
   void pushButton(RemyButton button) {

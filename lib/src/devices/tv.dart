@@ -606,10 +606,10 @@ class Television {
             if (_debugDumpTraffic)
               print('$_timestamp ---- CONNECTING ----');
             socket = await Socket.connect(host, port);
-            socket.encoding = UTF8;
+            socket.encoding = utf8;
             socket.write('$username\x0d$password\x0d');
             await socket.flush();
-            responses = new StreamIterator<String>(socket.transform(UTF8.decoder).transform(const LineSplitter()));
+            responses = new StreamIterator<String>(socket.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()));
             await responses.moveNext();
             if (responses.current != 'Login:')
               throw new TelevisionException('Did not get login prompt from television', responses.current, this);
@@ -866,7 +866,7 @@ class Television {
   }
 
   Future<Null> showMessage(String message) async {
-    await sendCommand('KLCD', argument: message);
+    await sendCommand('KLCD', argument: message, errorIsOk: true); // we don't check if the tv is on first, so error responses are common
   }
 
   Future<Null> nextInput() async {
@@ -1065,11 +1065,6 @@ class Television {
   Future<String> get name => readValue('TVNM', argument: '1');
   Future<String> get model => readValue('MNRD', argument: '1');
   Future<String> get softwareVersion => readValue('SWVN', argument: '1');
-
-  Future<Null> displayMessage(String value) async {
-    assert(value != null);
-    await sendCommand('KLCD', argument: value);
-  }
 
   Future<bool> get demoOverlay async {
     final String response = await readValue('DMSL');

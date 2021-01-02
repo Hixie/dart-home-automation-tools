@@ -36,24 +36,39 @@ class URadMonitor {
   MeasurementPacket _handleData(String value) {
     final DateTime timestamp = new DateTime.now();
     try {
-      Json data = Json.parse(value).data;
+      dynamic data = Json.parse(value).data;
       if (data.type.toString() != '8')
         throw 'unknown device type';
       List<Measurement> parameters = <Measurement>[
-        new URadMonitorRadiation(
-          station: station,
-          timestamp: timestamp,
-          detector: data.detector.toString(),
-          countsPerMinute: data.cpm.toInt(),
-        ),
-        new RawTemperature(data.temperature.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.humidity(data.humidity.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.pressure(data.pressure.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.volatileOrganicCompounds(data.voc.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.carbonDioxide(data.co2.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.noise(data.noise.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.formaldehyde(data.ch2o.toDouble(), station: station, timestamp: timestamp),
-        new AirQualityParameter.pm2_5(data.pm25.toDouble(), station: station, timestamp: timestamp),
+        if (data.cpm != null)
+          new URadMonitorRadiation(
+            station: station,
+            timestamp: timestamp,
+            detector: data.detector.toString(),
+            countsPerMinute: data.cpm.toInt(),
+          ),
+        if (data.temperature != null)
+          new RawTemperature(data.temperature.toDouble(), station: station, timestamp: timestamp),
+        if (data.humidity != null)
+          new AirQualityParameter.humidity(data.humidity.toDouble(), station: station, timestamp: timestamp),
+        if (data.pressure != null)
+          new AirQualityParameter.pressure(data.pressure.toDouble(), station: station, timestamp: timestamp),
+        if (data.voc != null)
+          new AirQualityParameter.volatileOrganicCompounds(data.voc.toDouble(), station: station, timestamp: timestamp),
+        if (data.co2 != null)
+          new AirQualityParameter.carbonDioxide(data.co2.toDouble(), station: station, timestamp: timestamp),
+        if (data.noise != null)
+          new AirQualityParameter.noise(data.noise.toDouble(), station: station, timestamp: timestamp),
+        if (data.ch20 != null)
+          new AirQualityParameter.formaldehyde(data.ch2o.toDouble(), station: station, timestamp: timestamp),
+        if (data.pm1 != null)
+          new AirQualityParameter.pm1_0(data.pm1.toDouble(), station: station, timestamp: timestamp),
+        if (data.pm25 != null)
+          new AirQualityParameter.pm2_5(data.pm25.toDouble(), station: station, timestamp: timestamp),
+        if (data.pm10 != null)
+          new AirQualityParameter.pm10(data.pm10.toDouble(), station: station, timestamp: timestamp),
+        if (data.o3 != null)
+          new AirQualityParameter.ozone(data.o3.toDouble(), station: station, timestamp: timestamp),
       ];
       return new MeasurementPacket(parameters);
     } catch (error) {
@@ -63,7 +78,7 @@ class URadMonitor {
 
   void log(String message) {
     if (onLog != null)
-      onLog(message);
+      onLog('$message');
   }
 
   void dispose() {
@@ -80,6 +95,13 @@ class URadMonitorRadiation extends Radiation {
     @required String detector,
     @required this.countsPerMinute,
   }) : doseRate = _detectorFactor(detector) * countsPerMinute,
+       super(station: station, timestamp: timestamp);
+
+  URadMonitorRadiation.fromDoseRate({
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    @required this.doseRate,
+  }) : countsPerMinute = null,
        super(station: station, timestamp: timestamp);
 
   final int countsPerMinute;

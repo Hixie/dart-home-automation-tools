@@ -189,7 +189,7 @@ StreamHandler<int> getRawValueDiskLogger({
     String number = '-';
     if (value != null)
       number = ((value / 1023.0) * 99.0).toStringAsFixed(1);
-    log.openWrite(mode: FileMode.APPEND)
+    log.openWrite(mode: FileMode.append)
       ..writeln('$name,${new DateTime.now().toIso8601String().padRight(26, '0')},$value,$number')
       ..close();
   };

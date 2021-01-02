@@ -1,11 +1,16 @@
 library home_automation_tools;
 
 export 'src/common.dart';
+export 'src/databases/dishwasher.dart';
+export 'src/databases/others.dart';
+export 'src/databases/sensors.dart';
 export 'src/devices/airnow.dart';
 export 'src/devices/cloudbit.dart';
 export 'src/devices/cloudbit_cloud.dart';
 export 'src/devices/cloudbit_local.dart';
+export 'src/devices/database.dart';
 export 'src/devices/one_wire_temperature.dart';
+export 'src/devices/process_monitor.dart';
 export 'src/devices/remy.dart';
 export 'src/devices/sunpower.dart';
 export 'src/devices/thermostat.dart';
@@ -16,6 +21,8 @@ export 'src/devices/wake_on_lan.dart';
 export 'src/hash_codes.dart';
 export 'src/json.dart';
 export 'src/metrics.dart';
+export 'src/packet_buffer.dart';
 export 'src/radiation.dart';
+export 'src/table_record.dart';
 export 'src/temperature.dart';
 export 'src/watch_stream.dart';

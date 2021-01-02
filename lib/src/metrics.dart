@@ -7,8 +7,11 @@ import 'hash_codes.dart';
 import 'temperature.dart';
 import 'radiation.dart';
 
+// MeasurementPacket has a list of Measurements, each of which has a MeasurementStation.
+// Measurements include AirQualityParameters, Radiation, and Temperature (the latter two defined in their own files; see above).
+
 class MeasurementStation {
-  const MeasurementStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode, this.corrected: false });
+  const MeasurementStation({ this.latitude, this.longitude, this.siteName, this.agencyName, this.aqsCode, this.internationalAqsCode, this.corrected: false, this.outside = false });
 
   final double latitude;
   final double longitude;
@@ -17,6 +20,7 @@ class MeasurementStation {
   final String aqsCode;
   final String internationalAqsCode;
   final bool corrected;
+  final bool outside;
 
   @override
   String toString() {
@@ -34,6 +38,7 @@ class MeasurementStation {
     String aqsCode,
     String internationalAqsCode,
     bool corrected,
+    bool outside,
   }) {
     return new MeasurementStation(
       latitude: latitude ?? this.latitude, 
@@ -42,12 +47,13 @@ class MeasurementStation {
       agencyName: agencyName ?? this.agencyName, 
       aqsCode: aqsCode ?? this.aqsCode, 
       internationalAqsCode: internationalAqsCode ?? this.internationalAqsCode, 
-      corrected: corrected ?? this.corrected, 
+      corrected: corrected ?? this.corrected,
+      outside: outside ?? this.outside,
     );
   }
 
   @override
-  int get hashCode => hashValues(latitude, longitude, siteName, agencyName, aqsCode, internationalAqsCode, corrected);
+  int get hashCode => hashValues(latitude, longitude, siteName, agencyName, aqsCode, internationalAqsCode, corrected, outside);
 
   @override
   bool operator ==(Object other) {
@@ -60,7 +66,8 @@ class MeasurementStation {
         && typedOther.agencyName == agencyName
         && typedOther.aqsCode == aqsCode
         && typedOther.internationalAqsCode == internationalAqsCode
-        && typedOther.corrected == corrected;
+        && typedOther.corrected == corrected
+        && typedOther.outside == outside;
   }
 }
 
@@ -74,11 +81,48 @@ enum Metric {
   ozone,
   pm10,
   pm2_5,
+  pm1_0,
   pressure,
   radiation,
   sulphurDioxide,
   temperature,
   volatileOrganicCompounds,
+}
+
+String metricToString(Metric metric) {
+  switch (metric) {
+    case Metric.carbonDioxide:
+      return 'CO₂';
+    case Metric.carbonMonoxide:
+      return 'CO';
+    case Metric.formaldehyde:
+      return 'CH₂O';
+    case Metric.humidity:
+      return 'Humidity';
+    case Metric.nitrogenDioxide:
+      return 'NO₂';
+    case Metric.noise:
+      return 'Noise';
+    case Metric.ozone:
+      return 'O₃';
+    case Metric.pm10:
+      return 'PM₁₀';
+    case Metric.pm2_5:
+      return 'PM₂.₅';
+    case Metric.pm1_0:
+      return 'PM₁.₀';
+    case Metric.pressure:
+      return 'Pressure';
+    case Metric.radiation:
+      return 'Radiation';
+    case Metric.sulphurDioxide:
+      return 'SO₂';
+    case Metric.temperature:
+      return 'Temperature';
+    case Metric.volatileOrganicCompounds:
+      return 'VOC';
+  }
+  return null;
 }
 
 @immutable
@@ -166,8 +210,9 @@ class AirQualityParameter extends Measurement {
     @required this.metric,
     @required this.units,
     @required this.value,
-    this.aqi,
-  }) : super(station: station, timestamp: timestamp) {
+    double aqi,
+  }) : _aqi = aqi,
+       super(station: station, timestamp: timestamp) {
     assert(station != null);
     assert(timestamp != null);
     assert(metric != null);
@@ -177,57 +222,100 @@ class AirQualityParameter extends Measurement {
   AirQualityParameter.humidity(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.humidity,
        units = MetricUnits.relativeHumidity,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   AirQualityParameter.pressure(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.pressure,
        units = MetricUnits.pascals,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   AirQualityParameter.volatileOrganicCompounds(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.volatileOrganicCompounds,
        units = MetricUnits.ohm, // MetricUnits.milligramsPerCubicMeter,
+       _aqi = aqi,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.carbonMonoxide(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    double aqi,
+  }) : metric = Metric.carbonMonoxide,
+       units = MetricUnits.partsPerMillion,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   AirQualityParameter.carbonDioxide(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.carbonDioxide,
        units = MetricUnits.partsPerMillion,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   AirQualityParameter.noise(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.noise,
        units = MetricUnits.decibels,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   AirQualityParameter.formaldehyde(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.formaldehyde,
        units = MetricUnits.partsPerMillion,
+       _aqi = aqi,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.pm10(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    double aqi,
+  }) : metric = Metric.pm10,
+       units = MetricUnits.microgramsPerCubicMeter,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   AirQualityParameter.pm2_5(this.value, {
     @required MeasurementStation station,
     @required DateTime timestamp,
-    this.aqi,
+    double aqi,
   }) : metric = Metric.pm2_5,
        units = MetricUnits.microgramsPerCubicMeter,
+       _aqi = aqi,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.pm1_0(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    double aqi,
+  }) : metric = Metric.pm1_0,
+       units = MetricUnits.microgramsPerCubicMeter,
+       _aqi = aqi,
+       super(station: station, timestamp: timestamp);
+
+  AirQualityParameter.ozone(this.value, {
+    @required MeasurementStation station,
+    @required DateTime timestamp,
+    double aqi,
+  }) : metric = Metric.ozone,
+       units = MetricUnits.partsPerBillion,
+       _aqi = aqi,
        super(station: station, timestamp: timestamp);
 
   @override
@@ -239,7 +327,74 @@ class AirQualityParameter extends Measurement {
   @override
   final MetricUnits units;
 
-  final double aqi;
+  double get aqi {
+    if (_aqi != null)
+      return _aqi;
+    // This is based on:
+    //   https://aqicn.org/calculator
+    //   https://aqs.epa.gov/aqsweb/documents/codetables/aqi_breakpoints.html
+    switch (metric) {
+      case Metric.pm2_5:
+        assert(units == MetricUnits.microgramsPerCubicMeter);
+        return interpolateWithPoints(
+          input: value,
+          inputStopPoints: <double>[0.0, 12.0, 35.5, 55.5, 150.5, 250.5, 350.5, 500.0],
+          aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
+        );
+      case Metric.pm10:
+        assert(units == MetricUnits.microgramsPerCubicMeter);
+        return interpolateWithPoints(
+          input: value,
+          inputStopPoints: <double>[0.0, 55.0, 155.0, 255.0, 355.0, 425.0, 505.0, 605.0],
+          aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
+        );
+      case Metric.carbonMonoxide:
+        assert(units == MetricUnits.partsPerMillion);
+        return interpolateWithPoints(
+          input: value,
+          inputStopPoints: <double>[0.0, 4.5, 9.5, 12.5, 15.5, 30.5, 40.5, 50.5],
+          aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
+        );
+      case Metric.nitrogenDioxide:
+        assert(units == MetricUnits.partsPerBillion);
+        return interpolateWithPoints(
+          input: value,
+          inputStopPoints: <double>[0.0, 0.054, 0.101, 0.361, 0.65, 1.25, 1.65, 2.049],
+          aqiStopPoints: <double>[0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0],
+        );
+      case Metric.ozone:
+        // Highly variable; AQI should be based on averages.
+        // BTW, when implementing this, be careful with the units. People
+        // measure this in ppb but breakpoints seem to be defined in ppm.
+      case Metric.sulphurDioxide:
+        // Highly variable; AQI should be based on averages.
+      default:
+        return null;
+    }
+  }
+  final double _aqi;
+
+  static double interpolateWithPoints({ double input, List<double> inputStopPoints, List<double> aqiStopPoints }) {
+    assert(inputStopPoints.length == aqiStopPoints.length);
+    assert(inputStopPoints.length >= 2);
+    final int length = inputStopPoints.length;
+    if (input < inputStopPoints.first) {
+      return interpolate(input, inputStopPoints[0], inputStopPoints[1], aqiStopPoints[0], aqiStopPoints[1]);
+    } else if (input > inputStopPoints.last) {
+      return interpolate(input, inputStopPoints[length - 2], inputStopPoints[length - 1], aqiStopPoints[length - 2], aqiStopPoints[length - 1]);
+    } else {
+      for (int index = 1; index < length; index += 1) {
+        if (input < inputStopPoints[index])
+          return interpolate(input, inputStopPoints[index - 1], inputStopPoints[index], aqiStopPoints[index - 1], aqiStopPoints[index]);
+      }
+    }
+    assert(false);
+    return null;
+  }
+
+  static double interpolate(double input, double inA, double inB, double outA, double outB) {
+    return ((outB - outA) * ((input - inA) / (inB - inA))) + outA;
+  }
 
   @override
   String toString() {
@@ -306,6 +461,7 @@ class MeasurementPacket {
   AirQualityParameter get ozone => _metrics[Metric.ozone] as AirQualityParameter;
   AirQualityParameter get pm10 => _metrics[Metric.pm10] as AirQualityParameter;
   AirQualityParameter get pm2_5 => _metrics[Metric.pm2_5] as AirQualityParameter;
+  AirQualityParameter get pm1_0 => _metrics[Metric.pm1_0] as AirQualityParameter;
   AirQualityParameter get pressure => _metrics[Metric.pressure] as AirQualityParameter;
   Radiation get radiation => _metrics[Metric.radiation] as Radiation;
   AirQualityParameter get sulphurDioxide => _metrics[Metric.sulphurDioxide] as AirQualityParameter;
@@ -329,50 +485,8 @@ class MeasurementPacket {
       Measurement parameter = _metrics[metric];
       if (parameter != null) {
         result.write('  ');
-        switch (metric) {
-          case Metric.carbonDioxide:
-            result.write('CO₂: ');
-            break;
-          case Metric.carbonMonoxide:
-            result.write('CO: ');
-            break;
-          case Metric.formaldehyde:
-            result.write('CH₂O: ');
-            break;
-          case Metric.humidity:
-            result.write('Humidity: ');
-            break;
-          case Metric.nitrogenDioxide:
-            result.write('NO₂: ');
-            break;
-          case Metric.noise:
-            result.write('Noise: ');
-            break;
-          case Metric.ozone:
-            result.write('O₃: ');
-            break;
-          case Metric.pm10:
-            result.write('PM₁₀: ');
-            break;
-          case Metric.pm2_5:
-            result.write('PM₂.₅: ');
-            break;
-          case Metric.pressure:
-            result.write('Pressure: ');
-            break;
-          case Metric.radiation:
-            result.write('Radiation: ');
-            break;
-          case Metric.sulphurDioxide:
-            result.write('SO₂: ');
-            break;
-          case Metric.temperature:
-            result.write('Temperature: ');
-            break;
-          case Metric.volatileOrganicCompounds:
-            result.write('VOC: ');
-            break;
-        }
+        result.write(metricToString(parameter.metric));
+        result.write(': ');
         result.write(parameter.toString());
         stations.add(parameter.station);
         count += 1;
