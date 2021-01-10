@@ -75,11 +75,10 @@ Stream<TableRecord> fetchHistoricalData(String hostName, int port, SecurityConte
     while (buffer.available >= rawRecordSize) {
       try {
         yield TableRecord.fromRaw(buffer.readUint8List(rawRecordSize));
-      } catch (error, stack) {
-        print('got $error\n$stack');
+      } on ChecksumException {
+        // skipping this record
       }
       buffer.checkpoint();
     }
   }
-  print('done with reading...');
 }
