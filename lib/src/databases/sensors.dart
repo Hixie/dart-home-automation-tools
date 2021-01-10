@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:home_automation_tools/all.dart';
 
 const int dbFamilyRoomSensors = 0x0000000000001001;
+const int dbFamilyRoomSensorsLength = 8*8;
 const int dbOutsideSensors = 0x0000000000001000;
+const int dbOutsideSensorsLength = 10*8;
 
 MeasurementPacket parseFamilyRoomSensorsRecord(TableRecord record) {
   final ByteData bytes = record.data.buffer.asByteData(record.data.offsetInBytes, record.data.lengthInBytes);
