@@ -29,7 +29,7 @@ class TelevisionException implements Exception {
   String toString() {
     if (response != null)
       return '$message: "$response"';
-    return '$message.';
+    return '$message';
   }
 }
 
@@ -365,7 +365,7 @@ class TelevisionChannel {
       case TelevisionSource.switching:
         break; // must be last in switch statement
     }
-    throw new TelevisionException('Selected source is too ambiguous', source.toString(), null);
+    throw new TelevisionException('Selected source is too ambiguous.', source.toString(), null);
   }
 
   // Create a source object to represent a specific TV channel.
@@ -412,7 +412,7 @@ class TelevisionChannel {
           DC11: '${channel[1]}${channel[2]}${channel[3]}${channel[4]}',
         );
       default:
-        throw new TelevisionException('Unknown TV channel format', format, null);
+        throw new TelevisionException('Unknown TV channel format.', format, null);
     }
   }
 
@@ -587,10 +587,10 @@ class Television {
         try {
           final List<InternetAddress> hosts = await InternetAddress.lookup('tv.');
           if (hosts.isEmpty)
-            throw new TelevisionException('Could not resolve TV in DNS', null, this);
+            throw new TelevisionException('Could not resolve TV in DNS.', null, this);
           host = hosts.first;
         } on SocketException {
-          throw new TelevisionException('Could not resolve TV in DNS', null, this);
+          throw new TelevisionException('Could not resolve TV in DNS.', null, this);
         }
       }
       Socket socket;
@@ -612,10 +612,10 @@ class Television {
             responses = new StreamIterator<String>(socket.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()));
             await responses.moveNext();
             if (responses.current != 'Login:')
-              throw new TelevisionException('Did not get login prompt from television', responses.current, this);
+              throw new TelevisionException('Did not get login prompt from television.', responses.current, this);
             await responses.moveNext();
             if (responses.current != 'Password:')
-              throw new TelevisionException('Did not get password prompt from television', responses.current, this);
+              throw new TelevisionException('Did not get password prompt from television.', responses.current, this);
           } catch (error) {
             if ((error is TelevisionException) ||
                 ((error is SocketException) &&
@@ -741,7 +741,7 @@ class Television {
       if (errorIsOk && response == 'ERR')
         return false;
       if (response != 'OK')
-        throw new TelevisionErrorResponse('Response to "$message$argument" was unexpectedly not "OK"', response, this);
+        throw new TelevisionErrorResponse('Response to "$message$argument" was unexpectedly not "OK".', response, this);
     } on TelevisionException {
       if (errorIsOk)
         return false;
@@ -765,7 +765,7 @@ class Television {
   }) async {
     String canceled;
     Timer timeoutTimer = new Timer(timeout, () {
-      abort('Timed out awaiting desired response to "$message"', timeout: true);
+      abort('Timed out awaiting desired response to "$message".', timeout: true);
     });
     AbortWatcher handleAbort = (String message) { canceled = message; };
     _abortWatchers.add(handleAbort);
@@ -795,7 +795,7 @@ class Television {
   }) async {
     String canceled;
     Timer timeoutTimer = new Timer(timeout, () {
-      abort('Timed out awaiting successful response to "$message"', timeout: true);
+      abort('Timed out awaiting successful response to "$message".', timeout: true);
     });
     AbortWatcher handleAbort = (String message) { canceled = message; };
     _abortWatchers.add(handleAbort);
@@ -828,7 +828,7 @@ class Television {
       if (response == 'ERR') {
         if (errorIsNull)
           return null;
-        throw new TelevisionErrorResponse('Unexpected response to "$message$argument"', response, this);
+        throw new TelevisionErrorResponse('Unexpected response to "$message$argument".', response, this);
       }
       return response;
     } on TelevisionException {
@@ -850,7 +850,7 @@ class Television {
      case '1':
        return true;
     }
-    throw new TelevisionErrorResponse('Unknown response to "POWR" message', response, this);
+    throw new TelevisionErrorResponse('Unknown response to "POWR" message.', response, this);
   }
 
   Future<Null> setPower(bool value) async {
@@ -950,7 +950,7 @@ class Television {
         if (!result) {
           String current = await readRawValue('IAVD');
           if (current != value.IAVD)
-            throw new TelevisionErrorResponse('Received error response to message "IAVD${value.IAVD}" but current IAVD status is "$current"', null, this);
+            throw new TelevisionErrorResponse('Received error response to message "IAVD${value.IAVD}" but current IAVD status is "$current".', null, this);
         }
       }
       if (value.INP5 != null)
@@ -976,7 +976,7 @@ class Television {
     try {
       return int.parse(response, radix: 10);
     } on FormatException {
-      throw new TelevisionErrorResponse('Unknown response to "VOLM" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "VOLM" message.', response, this);
     }
   }
 
@@ -996,7 +996,7 @@ class Television {
      case '2':
        return false;
     }
-    throw new TelevisionErrorResponse('Unknown response to "MUTE" message', response, this);
+    throw new TelevisionErrorResponse('Unknown response to "MUTE" message.', response, this);
   }
 
   Future<Null> setMuted(bool value) async {
@@ -1015,7 +1015,7 @@ class Television {
     try {
       return int.parse(response, radix: 10);
     } on FormatException {
-      throw new TelevisionErrorResponse('Unknown response to "HPOS" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "HPOS" message.', response, this);
     }
   }
 
@@ -1032,7 +1032,7 @@ class Television {
     try {
       return int.parse(response, radix: 10);
     } on FormatException {
-      throw new TelevisionErrorResponse('Unknown response to "VPOS" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "VPOS" message.', response, this);
     }
   }
 
@@ -1053,7 +1053,7 @@ class Television {
         return null;
       return result;
     } on FormatException {
-      throw new TelevisionErrorResponse('Unknown response to "OFTM" message', response, this);
+      throw new TelevisionErrorResponse('Unknown response to "OFTM" message.', response, this);
     }
   }
 
@@ -1076,7 +1076,7 @@ class Television {
      case '1':
        return true;
     }
-    throw new TelevisionErrorResponse('Unknown response to "DMSL" message', response, this);
+    throw new TelevisionErrorResponse('Unknown response to "DMSL" message.', response, this);
   }
 
   Future<Null> setDemoOverlay(bool value) async {
