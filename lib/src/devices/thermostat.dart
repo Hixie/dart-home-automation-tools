@@ -19,7 +19,7 @@ import '../watch_stream.dart';
 
 enum ThermostatStatus { heating, cooling, fan, idle }
 
-final bool verbose = false;
+const bool verbose = false;
 
 class _PendingCommand {
   _PendingCommand(this.message);
@@ -104,8 +104,8 @@ class ThermostatReport {
   }
 }
 
-class Thermostat {
-  Thermostat({
+class RawThermostat {
+  RawThermostat({
     this.host,
     this.port: 10001,
     this.username,
@@ -213,10 +213,10 @@ class Thermostat {
     }
   }
 
-  Completer<Null> _signal = new Completer<Null>();
+  Completer<void> _signal = new Completer<void>();
   void _triggerSignal() {
     _signal.complete();
-    _signal = new Completer<Null>();
+    _signal = new Completer<void>();
   }
 
   void _startPollingTemperature(Sink<Temperature> sink) {
@@ -255,29 +255,29 @@ class Thermostat {
     _triggerSignal();
   }
 
-  Future<Null> _ledThrottle = new Future<Null>.value();
+  Future<void> _ledThrottle = new Future<void>.value();
 
   /// LEDs cannot be updated more often than about once every 1000ms
   /// without the updates being faster than the thermostat actually
   /// reads the state and updates the physical LEDs.
-  Future<Null> setLeds({ bool red, bool green, bool yellow }) async {
+  Future<void> setLeds({ bool red, bool green, bool yellow }) async {
     await _ledThrottle;
-    await Future.wait<Null>(<Future<Null>>[
+    await Future.wait<void>(<Future<void>>[
       _sendLed('R', value: red),
       _sendLed('G', value: green),
       _sendLed('Y', value: yellow),
     ]);
-    _ledThrottle = new Future<Null>.delayed(const Duration(milliseconds: 1000));
+    _ledThrottle = new Future<void>.delayed(const Duration(milliseconds: 1000));
   }
 
-  Future<Null> _sendLed(String code, { @required bool value }) async {
+  Future<void> _sendLed(String code, { @required bool value }) async {
     if (value == null)
       return;
     assert(code == 'R' || code == 'G' || code == 'Y');
     await _send('WL$code', 'WL${code}1D${value ? '1' : '0'}');
   }
 
-  Future<Null> heat() async {
+  Future<void> heat() async {
     // heat - WNMS1DH WNFM1DA WNCD1D42 WNHD1D31
     await Future.wait<String>(<Future<String>>[
       _send('WNMS', 'WNMS1DH'),
@@ -287,7 +287,7 @@ class Thermostat {
     ]);
   }
 
-  Future<Null> cool() async {
+  Future<void> cool() async {
     // cool - WNMS1DC WNFM1DA WNCD1D16 WNHD1D3
     await Future.wait<String>(<Future<String>>[
       _send('WNMS', 'WNMS1DC'),
@@ -297,7 +297,7 @@ class Thermostat {
     ]);
   }
 
-  Future<Null> fan() async {
+  Future<void> fan() async {
     // fan - WNMS1DO WNFM1DO
     await Future.wait<String>(<Future<String>>[
       _send('WNMS', 'WNMS1DO'),
@@ -305,7 +305,7 @@ class Thermostat {
     ]);
   }
 
-  Future<Null> off() async {
+  Future<void> off() async {
     // off - WNMS1DO WNFM1DA
     await Future.wait<String>(<Future<String>>[
       _send('WNMS', 'WNMS1DO'),
@@ -313,7 +313,7 @@ class Thermostat {
     ]);
   }
 
-  Future<Null> auto({ bool occupied: false }) async {
+  Future<void> auto({ bool occupied: false }) async {
     assert(occupied != null);
     if (occupied) {
       await Future.wait<String>(<Future<String>>[
@@ -351,7 +351,7 @@ class Thermostat {
 
   bool get _connectionRequired => _temperatureSubscriptionActive || _statusSubscriptionActive || _reportSubscriptionActive || _commands.isNotEmpty;
 
-  Future<Null> _initialize() async {
+  Future<void> _initialize() async {
     while (_active) {
       while (_connectionRequired) {
         Socket connection;
@@ -407,13 +407,13 @@ class Thermostat {
               String result = await _rawSend(connection, buffer, 'RAS1');
               _processStatus(result);
               if (_commands.isEmpty)
-                await Future.any(<Future<Null>>[_signal.future, new Future<Null>.delayed(period)]);
+                await Future.any(<Future<void>>[_signal.future, new Future<void>.delayed(period)]);
             }
           }
         } catch (error) {
-          await Future.wait(<Future<Null>>[
+          await Future.wait(<Future<void>>[
             fail(error),
-            new Future<Null>.delayed(const Duration(seconds: 10)),
+            new Future<void>.delayed(const Duration(seconds: 10)),
           ]);
         } finally {
           try {
@@ -427,7 +427,7 @@ class Thermostat {
     }
   }
 
-  Future<Null> _verify(Socket connection, StreamBuffer<String> buffer, String command, Map<String, String> responses) async {
+  Future<void> _verify(Socket connection, StreamBuffer<String> buffer, String command, Map<String, String> responses) async {
     assert(responses.containsKey(null));
     String result = await _rawSend(connection, buffer, command);
     String response;
@@ -458,14 +458,14 @@ class Thermostat {
       log('>> $command');
     connection.writeln(command);
     // We throttle the traffic to avoid overloading the thermostat.
-    await new Future<Null>.delayed(const Duration(milliseconds: 50));
+    await new Future<void>.delayed(const Duration(milliseconds: 50));
     String result = await buffer.readValue();
     if (verbose)
       log('<< $result');
     return result;
   }
 
-  Future<Null> fail(dynamic error) async {
+  Future<void> fail(dynamic error) async {
     if (onError != null)
       await onError(error);
   }
@@ -479,6 +479,132 @@ class Thermostat {
     assert(_active);
     _active = false;
     _triggerSignal();
+  }
+}
+
+enum _ThermostatTask { heat, cool, fan, off, autoOccupied, autoUnoccupied }
+
+String _describeTask(_ThermostatTask task) {
+  switch (task) {
+    case _ThermostatTask.heat: return 'heating';
+    case _ThermostatTask.cool: return 'cooling';
+    case _ThermostatTask.fan: return 'fan';
+    case _ThermostatTask.off: return 'idle mode';
+    case _ThermostatTask.autoOccupied: return 'auto mode (occupied)';
+    case _ThermostatTask.autoUnoccupied: return 'auto mode (unoccupied)';
+    default: return 'unknown mode';
+  }
+}
+
+class Thermostat {
+  Thermostat({
+    this.host,
+    this.port: 10001,
+    this.username,
+    this.password,
+    this.period = const Duration(seconds: 5),
+    this.onError,
+    this.onLog,
+  }) : _thermostat = RawThermostat(
+    host: host,
+    port: port,
+    username: username,
+    password: password,
+    period: period,
+    onError: onError,
+    onLog: onLog,
+  );
+
+  final InternetAddress host;
+  final int port;
+  final String username;
+  final String password;
+  final Duration period;
+  final ErrorHandler onError;
+  final LogCallback onLog;
+
+  final RawThermostat _thermostat;
+
+  WatchStream<Temperature> get temperature => _thermostat.temperature;
+  WatchStream<ThermostatStatus> get status => _thermostat.status;
+  WatchStream<ThermostatReport> get report => _thermostat.report;
+
+  Future<void> setLeds({ bool red, bool green, bool yellow }) {
+    return _thermostat.setLeds(red: red, green: green, yellow: yellow);
+  }
+
+  _ThermostatTask _currentTask;
+  Stopwatch _currentTaskDuration = Stopwatch()..start();
+  Duration _neededDuration = const Duration(seconds: 5); // how long the current state must be run for
+  Duration _neededCooldown = Duration.zero; // how long the current state must be off for
+  Timer _timer;
+
+  Future<void> heat() => _schedule(_ThermostatTask.heat, Duration.zero, Duration.zero);
+  Future<void> cool() => _schedule(_ThermostatTask.cool, Duration.zero, Duration.zero);
+  Future<void> fan() => _schedule(_ThermostatTask.fan, const Duration(minutes: 1), const Duration(seconds: 10));
+  Future<void> off() => _schedule(_ThermostatTask.off, Duration.zero, Duration.zero);
+  Future<void> auto({ bool occupied: false }) => _schedule(occupied ? _ThermostatTask.autoOccupied : _ThermostatTask.autoUnoccupied, Duration.zero, Duration.zero);
+
+  Future<void> _schedule(_ThermostatTask task, Duration neededDuration, Duration neededCooldown, { bool wasScheduled = false }) async {
+    _timer?.cancel();
+    _timer = null;
+    if (_currentTask == task)
+      return;
+    final Duration timeLeft = _neededDuration - _currentTaskDuration.elapsed;
+    if (timeLeft > Duration.zero) {
+      // We haven't run the current state for long enough.
+      // Reschedule this for when we have.
+      _timer = Timer(timeLeft, () {
+        _timer = null;
+        _schedule(task, neededDuration, neededCooldown, wasScheduled: true);
+      });
+      if (verbose)
+        log('${wasScheduled ? "re" : ""}scheduled ${_describeTask(task)} to trigger in ${prettyDuration(timeLeft)}.');
+      return;
+    }
+    assert(_timer == null);
+    _currentTask = task;
+    _currentTaskDuration.reset();
+    _neededDuration = _durationMax(_neededCooldown, neededDuration);
+    _neededCooldown = neededCooldown;
+    if (verbose)
+      log('triggering ${wasScheduled ? "scheduled " : ""}${_describeTask(task)} (effective needed duration: ${prettyDuration(_neededDuration, immediately: 'none')}; needed cooldown: ${prettyDuration(_neededCooldown, immediately: 'none')}).');
+    switch (task) {
+      case _ThermostatTask.heat:
+        _thermostat.heat();
+        break;
+      case _ThermostatTask.cool:
+        _thermostat.cool();
+        break;
+      case _ThermostatTask.fan:
+        _thermostat.fan();
+        break;
+      case _ThermostatTask.off:
+        _thermostat.off();
+        break;
+      case _ThermostatTask.autoOccupied:
+        _thermostat.auto(occupied: true);
+        break;
+      case _ThermostatTask.autoUnoccupied:
+        _thermostat.auto(occupied: false);
+        break;
+    }
+  }
+
+  static Duration _durationMax(Duration a, Duration b) {
+    if (a > b)
+      return a;
+    return b;
+  }
+
+  void log(String message) {
+    if (onLog != null)
+      onLog(message);
+  }
+
+  void dispose() {
+    _thermostat.dispose();
+    _timer?.cancel();
   }
 }
 
@@ -531,11 +657,11 @@ class StreamBuffer<T> {
 
   List<T> _values = <T>[];
 
-  List<Completer<Null>> _signals = <Completer<Null>>[];
+  List<Completer<void>> _signals = <Completer<void>>[];
 
   Future<T> readValue() async {
     if (_values.isEmpty || _signals.isNotEmpty) {
-      Completer<Null> completer = new Completer<Null>();
+      Completer<void> completer = new Completer<void>();
       _signals.add(completer);
       await completer.future;
     }
