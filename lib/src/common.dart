@@ -155,7 +155,7 @@ StreamTransformer<bool, bool> _inverter() {
   );
 }
 
-String prettyDuration(Duration duration) {
+String prettyDuration(Duration duration, { String immediately = '' }) {
   int microseconds = duration.inMicroseconds;
   int weeks = microseconds ~/ (1000 * 1000 * 60 * 60 * 24 * 7);
   microseconds -= weeks * (1000 * 1000 * 60 * 60 * 24 * 7);
@@ -216,5 +216,6 @@ String prettyDuration(Duration duration) {
     fields |= 0x02;
   }
 
-  return result.toString().trimRight();
+  final String output = result.toString().trimRight();
+  return output.isEmpty ? immediately : output;
 }

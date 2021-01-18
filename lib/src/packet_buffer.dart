@@ -13,6 +13,7 @@ class PacketBuffer {
   void add(Uint8List data) {
     _buffer.add(data);
     _length += data.length;
+    assert(_buffer.fold<int>(0, (int current, Uint8List next) => current + next.length) == _length);
   }
 
   int get available {
@@ -81,10 +82,12 @@ class PacketBuffer {
     int index = 0;
     for (Uint8List packet in _buffer) {
       if (_start > 0) { 
-        bytes.setRange(index, index + packet.length - _start, packet.buffer.asUint8List(packet.offsetInBytes + _start, packet.length));
+        bytes.setRange(index, index + (packet.length - _start), packet.buffer.asUint8List(packet.offsetInBytes + _start, packet.length - _start));
+        index += packet.length - _start;
         _start = 0;
       } else {
         bytes.setRange(index, index + packet.length, packet);
+        index += packet.length;
       }
     }
     _buffer.clear();
