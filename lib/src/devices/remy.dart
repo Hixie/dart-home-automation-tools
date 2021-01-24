@@ -49,6 +49,8 @@ class RemyToDo {
 
 class RemyUi {
   RemyUi(this.buttons, this.messages, this.todos);
+
+  // TODO(ianh): consider using List<T> here instead of Set<T> given the semantics.
   final Set<RemyButton> buttons;
   final Set<RemyMessage> messages;
   final Set<RemyToDo> todos;

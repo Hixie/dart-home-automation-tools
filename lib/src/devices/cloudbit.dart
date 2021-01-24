@@ -15,15 +15,17 @@ class CloudBitException implements Exception {
   final String message;
   final CloudBit cloudbit;
   @override
-  String toString() => '$message (device ${cloudbit?.displayName})';
+  String toString() => '$message (${cloudbit?.displayName})';
 }
 
 abstract class CloudBitProvider {
   CloudBitProvider({
     this.onLog,
+    this.onError, // if not specified, defers to onLog
   });
 
   final DeviceLogCallback onLog;
+  final ErrorHandler onError;
 
   Future<CloudBit> getDevice(String deviceId);
 
@@ -32,6 +34,14 @@ abstract class CloudBitProvider {
   void log(String deviceId, String message, { LogLevel level: LogLevel.info }) {
     if (onLog != null && level.index <= LogLevel.info.index)
       onLog(deviceId, message);
+  }
+
+  void reportError(CloudBitException error) {
+    if (onError != null) {
+      onError(error);
+    } else {
+      log(error.cloudbit?.deviceId, error.message, level: LogLevel.error);
+    }
   }
 }
 

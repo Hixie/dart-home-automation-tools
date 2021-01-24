@@ -21,8 +21,10 @@ class LittleBitsLocalServer extends CloudBitProvider {
   LittleBitsLocalServer({
     this.onIdentify,
     DeviceLogCallback onLog,
+    ErrorHandler onError,
   }) : super(
     onLog: onLog,
+    onError: onError,
   ) {
     _initialize();
   }
@@ -51,12 +53,16 @@ class LittleBitsLocalServer extends CloudBitProvider {
 
   @override
   Future<CloudBit> getDevice(String deviceId) async {
-    final Localbit cloudbit = _devices.putIfAbsent(deviceId, () {
+    return _ready.future.then((Null value) => getDeviceSync(deviceId));
+  }
+
+  // LittleBitsLocalServer only
+  Localbit getDeviceSync(String deviceId) {
+    return _devices.putIfAbsent(deviceId, () {
       LocalCloudBitDeviceDescription description = onIdentify(deviceId);
       log(deviceId, 'adding "${description.displayName}" to cloudbit library ($deviceId, ${description.hostname})', level: LogLevel.verbose);
       return new Localbit._(this, deviceId, description.displayName, description.hostname);
     });
-    return _ready.future.then((Null value) => cloudbit);
   }
 
   @override
@@ -151,7 +157,7 @@ class Localbit extends CloudBit {
       List<InternetAddress> hosts = await InternetAddress.lookup(hostname, type: InternetAddressType.IPv4)
         .timeout(const Duration(seconds: 30));
       if (hosts.isEmpty) {
-        server.log(deviceId, '$displayName: failed to resolve "$hostname"');
+        server.reportError(CloudBitException('failed to resolve "$hostname"', this));
         return;
       }
       assert(buffer.length >= 6);
@@ -164,7 +170,7 @@ class Localbit extends CloudBit {
       buffer.setRange(0, _macAddressBytes.length, _macAddressBytes);
       server._socket.send(buffer, hosts.first, 2021);
     } catch (exception) {
-      server.log(deviceId, '$displayName: failed to send message to "$hostname": $exception');
+      server.reportError(CloudBitException('failed to send message to "$hostname": $exception', this));
     }
   }
 
