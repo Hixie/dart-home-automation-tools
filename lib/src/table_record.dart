@@ -9,13 +9,16 @@ class TableRecord {
 
   TableRecord.now(this.data) : timestamp = DateTime.now().toUtc();
 
-  factory TableRecord.fromRaw(Uint8List data) {
+  static TableRecord fromRaw(Uint8List data, { bool requireNonNull = true }) {
     ByteData view = data.buffer.asByteData(data.offsetInBytes, data.lengthInBytes);
     DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(view.getUint64(0), isUtc: true);
     int checksum = view.getUint64(data.length - 8);
     TableRecord result = TableRecord(timestamp, data.sublist(8, data.length - 8));
-    if (result.checksum != checksum)
-      throw ChecksumException();
+    if (result.checksum != checksum) {
+      if (requireNonNull)
+        throw ChecksumException();
+      return null;
+    }
     return result;
   }
 
