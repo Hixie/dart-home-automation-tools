@@ -9,6 +9,7 @@ export 'src/devices/cloudbit.dart';
 export 'src/devices/cloudbit_cloud.dart';
 export 'src/devices/cloudbit_local.dart';
 export 'src/devices/database.dart';
+export 'src/devices/dnsmasq.dart';
 export 'src/devices/one_wire_temperature.dart';
 export 'src/devices/process_monitor.dart';
 export 'src/devices/remy.dart';
