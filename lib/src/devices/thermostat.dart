@@ -262,7 +262,6 @@ class RawThermostat {
   /// without the updates being faster than the thermostat actually
   /// reads the state and updates the physical LEDs.
   Future<void> setLeds({ bool red, bool green, bool yellow }) async {
-    final Future<void> lastThrottle = _ledThrottle;
     final Completer<void> newThrottleCompleter = Completer<void>();
     final Future<void> newThrottle = newThrottleCompleter.future;
     _ledThrottle = newThrottle;

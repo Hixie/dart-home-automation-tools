@@ -31,9 +31,9 @@ class LittleBitsCloud extends CloudBitProvider {
   LittleBitsCloud({
     @required this.authToken,
     this.onIdentify,
-    this.onError,
+    ErrorHandler onError,
     DeviceLogCallback onLog,
-  }) : super(onLog: onLog) {
+  }) : super(onLog: onLog, onError: onError) {
     _httpClient.userAgent = null;
     log(null, 'initialized littlebits remote cloud manager');
   }
@@ -41,8 +41,6 @@ class LittleBitsCloud extends CloudBitProvider {
   final String authToken;
 
   final IdentifierCallback onIdentify;
-
-  final ErrorHandler onError;
 
   final Map<String, _CloudBit> _devices = <String, _CloudBit>{};
   final HttpClient _httpClient = new HttpClient();
