@@ -19,7 +19,8 @@ import '../watch_stream.dart';
 
 enum ThermostatStatus { heating, cooling, fan, idle }
 
-const bool verbose = false;
+const bool _verbose = true;
+const bool _debugProtocol = false;
 
 class _PendingCommand {
   _PendingCommand(this.message);
@@ -261,13 +262,23 @@ class RawThermostat {
   /// without the updates being faster than the thermostat actually
   /// reads the state and updates the physical LEDs.
   Future<void> setLeds({ bool red, bool green, bool yellow }) async {
+    final Future<void> lastThrottle = _ledThrottle;
+    final Completer<void> newThrottleCompleter = Completer<void>();
+    final Future<void> newThrottle = newThrottleCompleter.future;
+    _ledThrottle = newThrottle;
     await _ledThrottle;
+    if (_ledThrottle != newThrottle) {
+      if (_verbose)
+        log('Discarding LED update due to throttling.');
+      return; // someone else started waiting after us, they can do their update instead
+    }
     await Future.wait<void>(<Future<void>>[
       _sendLed('R', value: red),
       _sendLed('G', value: green),
       _sendLed('Y', value: yellow),
     ]);
-    _ledThrottle = new Future<void>.delayed(const Duration(milliseconds: 1000));
+    await Future<void>.delayed(const Duration(milliseconds: 1000));
+    newThrottleCompleter.complete();
   }
 
   Future<void> _sendLed(String code, { @required bool value }) async {
@@ -337,11 +348,11 @@ class RawThermostat {
   Future<String> _send(Object key, String message) {
     _PendingCommand command = new _PendingCommand(message);
     if (_commands.containsKey(key)) {
-      if (verbose)
+      if (_verbose)
         log('replacing old message with key "$key" with new message: $message');
       _commands.remove(key);
     } else {
-      if (verbose)
+      if (_verbose)
         log('queuing new message with key "$key": $message');
     }
     _commands[key] = command;
@@ -356,6 +367,8 @@ class RawThermostat {
       while (_connectionRequired) {
         Socket connection;
         try {
+          if (_verbose)
+            log('connecting to $host:$port');
           connection = await Socket.connect(host, port);
           connection.encoding = utf8;
           final StreamBuffer<String> buffer = new StreamBuffer<String>(
@@ -393,14 +406,13 @@ class RawThermostat {
           final String thermostatName = await _readValue(connection, buffer, 'RMTN1', expectPrefix: true);
           log('connected to thermostat "$thermostatName" at ${host.host}:$port.');
           _station = new MeasurementStation(siteName: thermostatName, agencyName: brandName);
-          if (verbose)
+          if (_verbose)
             log('message queue has ${_commands.length} commands.');
           while (_connectionRequired) {
             if (_commands.isNotEmpty) {
-              Object key = _commands.keys.first;
-              _PendingCommand command = _commands[key];
+              final Object key = _commands.keys.first;
+              final _PendingCommand command = _commands.remove(key);
               String result = await _rawSend(connection, buffer, command.message);
-              _commands.remove(key);
               command._completer.complete(result);
             }
             if (_temperatureSubscriptionActive || _statusSubscriptionActive || _reportSubscriptionActive) {
@@ -454,13 +466,13 @@ class RawThermostat {
   }
 
   Future<String> _rawSend(Socket connection, StreamBuffer<String> buffer, String command) async {
-    if (verbose)
+    if (_debugProtocol)
       log('>> $command');
     connection.writeln(command);
     // We throttle the traffic to avoid overloading the thermostat.
     await new Future<void>.delayed(const Duration(milliseconds: 50));
     String result = await buffer.readValue();
-    if (verbose)
+    if (_debugProtocol)
       log('<< $result');
     return result;
   }
@@ -558,7 +570,7 @@ class Thermostat {
         _timer = null;
         _schedule(task, neededDuration, neededCooldown, wasScheduled: true);
       });
-      if (verbose)
+      if (_verbose)
         log('${wasScheduled ? "re" : ""}scheduled ${_describeTask(task)} to trigger in ${prettyDuration(timeLeft)}.');
       return;
     }
@@ -567,7 +579,7 @@ class Thermostat {
     _currentTaskDuration.reset();
     _neededDuration = _durationMax(_neededCooldown, neededDuration);
     _neededCooldown = neededCooldown;
-    if (verbose)
+    if (_verbose)
       log('triggering ${wasScheduled ? "scheduled " : ""}${_describeTask(task)} (effective needed duration: ${prettyDuration(_neededDuration, immediately: 'none')}; needed cooldown: ${prettyDuration(_neededCooldown, immediately: 'none')}).');
     switch (task) {
       case _ThermostatTask.heat:

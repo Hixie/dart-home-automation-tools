@@ -4,17 +4,22 @@ import 'dart:io';
 import '../common.dart';
 import '../watch_stream.dart';
 
+bool _verbose = true;
+
 class DnsMasqMonitor {
   DnsMasqMonitor({
     this.maxUpdateDelay = const Duration(minutes: 5),
+    this.minUpdateDelay = const Duration(seconds: 5),
     String dnsMasqLeases = _filename,
     this.onLog,
   }) : _file = File(dnsMasqLeases) {
+    log('monitoring $_filename');
     _update();
     _start();
   }
 
   final Duration maxUpdateDelay;
+  final Duration minUpdateDelay;
   final LogCallback onLog;
 
   static const String _filename = '/var/lib/misc/dnsmasq.leases';
@@ -31,7 +36,6 @@ class DnsMasqMonitor {
   }
 
   void _start() {
-    log('starting monitoring of $_filename');
     _stream = _file.watch();
     _subscription = _stream.listen(_handler, onDone: _start, cancelOnError: true);
   }
@@ -46,7 +50,6 @@ class DnsMasqMonitor {
     if (_parsing)
       return;
     _parsing = true;
-    log('updating...');
     try {
       final String data = await _file.readAsString();
       // 1618444641 b8:f6:b1:15:0a:61 10.10.10.30 laptop-chiron 01:b8:f6:b1:15:0a:61
@@ -76,22 +79,30 @@ class DnsMasqMonitor {
         }
       }
       if (_lastHosts != null) {
+        if (_verbose) {
+          log(
+            (_lastHosts.difference(hosts).map((String name) => '$name went away')
+              .followedBy(hosts.difference(_lastHosts).map((String name) => '$name appeared'))
+              .toList()
+              ..sort())
+            .join(', ')
+          );
+        }
         _lastHosts = hosts;
         for (String name in _outputs.keys)
           _outputs[name].add(_lastHosts.contains(name));
       }
       _timer?.cancel();
-      _timer = Timer(earliestExpiry.difference(DateTime.now()), _update);
+      _timer = Timer(earliestExpiry.difference(DateTime.now()) + minUpdateDelay, _update);
     } catch (error) {
       log('$error');
     } finally {
       _parsing = false;
-      log('update done');
     }
   }
 
   void log(String message) {
-    if (onLog != null)
+    if (onLog != null && message.isNotEmpty)
       onLog(message);
   }
 
