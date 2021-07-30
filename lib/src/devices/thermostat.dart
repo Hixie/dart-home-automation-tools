@@ -20,7 +20,7 @@ import '../watch_stream.dart';
 enum ThermostatStatus { heating, cooling, fan, idle }
 
 const bool _verbose = true;
-const bool _debugProtocol = false;
+const bool _debugProtocol = true;
 
 class _PendingCommand {
   _PendingCommand(this.message);
@@ -256,28 +256,41 @@ class RawThermostat {
     _triggerSignal();
   }
 
-  Future<void> _ledThrottle = new Future<void>.value();
+  bool _ledsLocked = false;
+  bool _redRequest, _greenRequest, _yellowRequest;
 
   /// LEDs cannot be updated more often than about once every 1000ms
   /// without the updates being faster than the thermostat actually
   /// reads the state and updates the physical LEDs.
   Future<void> setLeds({ bool red, bool green, bool yellow }) async {
-    final Completer<void> newThrottleCompleter = Completer<void>();
-    final Future<void> newThrottle = newThrottleCompleter.future;
-    _ledThrottle = newThrottle;
-    await _ledThrottle;
-    if (_ledThrottle != newThrottle) {
-      if (_verbose)
-        log('Discarding LED update due to throttling.');
-      return; // someone else started waiting after us, they can do their update instead
+    if (red != null)
+      _redRequest = red;
+    if (green != null)
+      _greenRequest = green;
+    if (yellow != null)
+      _yellowRequest = yellow;
+    if (!_ledsLocked)
+      _updateLeds();
+  }
+
+  void _updateLeds() async {
+    _ledsLocked = true;
+    try {
+      while (_redRequest != null || _greenRequest != null || _yellowRequest != null) {
+        final List<Future<void>> tasks = <Future<void>>[
+          _sendLed('R', value: _redRequest),
+          _sendLed('G', value: _greenRequest),
+          _sendLed('Y', value: _yellowRequest),
+        ];
+        _redRequest = null;
+        _greenRequest = null;
+        _yellowRequest = null;
+        await Future.wait<void>(tasks);
+        await Future.delayed(const Duration(milliseconds: 1000));
+      }
+    } finally {
+      _ledsLocked = false;
     }
-    await Future.wait<void>(<Future<void>>[
-      _sendLed('R', value: red),
-      _sendLed('G', value: green),
-      _sendLed('Y', value: yellow),
-    ]);
-    await Future<void>.delayed(const Duration(milliseconds: 1000));
-    newThrottleCompleter.complete();
   }
 
   Future<void> _sendLed(String code, { @required bool value }) async {
