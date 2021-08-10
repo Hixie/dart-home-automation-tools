@@ -6,9 +6,9 @@ class PacketBuffer {
 
   final Queue<Uint8List> _buffer = Queue<Uint8List>();
 
-  int _start = 0;
-  int _cursor = 0;
-  int _length = 0;
+  int _start = 0; // index of last checkpoint
+  int _cursor = 0; // index of end of last read
+  int _length = 0; // total bytes allocated
 
   void add(Uint8List data) {
     _buffer.add(data);
@@ -53,9 +53,12 @@ class PacketBuffer {
   Uint8List readUint8List(int length) {
     assert(length <= available); // contract
     assert(_start < _buffer.first.length); // invariant
+    if (length == 0) {
+      return Uint8List(0);
+    }
     int packetOffset = _cursor;
     for (Uint8List packet in _buffer) {
-      if (packetOffset > packet.length) {
+      if (packetOffset >= packet.length) {
         packetOffset -= packet.length;
         continue;
       }
@@ -76,7 +79,7 @@ class PacketBuffer {
   }
 
   void flatten() {
-    Uint8List bytes = Uint8List(available);
+    Uint8List bytes = Uint8List(_length - _start);
     _length = bytes.length;
     _cursor -= _start;
     int index = 0;
