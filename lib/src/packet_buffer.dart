@@ -58,7 +58,7 @@ class PacketBuffer {
         bytes = packet;
       } else {
         // the int stradles the boundary
-        flatten();
+        _flatten();
         bytes = _buffer.single;
         packetOffset = _cursor;
       }
@@ -88,7 +88,7 @@ class PacketBuffer {
         bytes = packet;
       } else {
         // the bytes stradle a boundary
-        flatten();
+        _flatten();
         bytes = _buffer.single;
         packetOffset = _cursor;
       }
@@ -99,8 +99,7 @@ class PacketBuffer {
     throw StateError('Unreachable.');
   }
 
-  // Shouldn't this be private?
-  void flatten() {
+  void _flatten() {
     Uint8List bytes = Uint8List(_length - _start);
     _length = bytes.length;
     _cursor -= _start;
