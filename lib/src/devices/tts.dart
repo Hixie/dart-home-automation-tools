@@ -15,8 +15,8 @@ class TextToSpeechServer {
 
   final LogCallback onLog;
 
-  static const Duration kRetryDelay = const Duration(seconds: 5);
-  static const Duration kMaxLatency = const Duration(seconds: 1);
+  static const Duration kRetryDelay = const Duration(seconds: 1);
+  static const Duration kMaxLatency = const Duration(seconds: 2);
   static const String kCompleted = 'completed ';
 
   Map<int, Completer<Null>> _pending = <int, Completer<Null>>{};
@@ -32,16 +32,18 @@ class TextToSpeechServer {
     Completer<WebSocket> completer;
     do {
       try {
+        _log('connecting to tts daemon...');
         completer = new Completer<WebSocket>();
         _connectionProgress = completer.future;
         _messageIndex = 0;
         _connection = await WebSocket.connect(host);
       } on SocketException catch (error) {
-        _log('failed to contact tts deamon: $error');
+        _log('failed to contact tts daemon: $error');
         await new Future<Null>.delayed(kRetryDelay);
         _connection = null;
       }
     } while (_connection == null); // ignore: invariant_booleans, false positive
+    _log('connected to tts daemon');
     _connection.listen((dynamic message) {
       if (message is String) {
         if (!message.startsWith(kCompleted))
