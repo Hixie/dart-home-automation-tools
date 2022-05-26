@@ -3,8 +3,6 @@ import 'dart:typed_data';
 
 import '../table_record.dart';
 
-enum DishwasherMode { dirty, active, clean, unknown }
-
 enum DishwasherDelay { hours0, hours2, hours4, hours8 }
 enum DishwasherUserCycleSelection { autosense, heavy, normal, light }
 enum DishwasherWashTemperature { normal, boost, sanitize }
