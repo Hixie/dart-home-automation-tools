@@ -286,7 +286,7 @@ class RawThermostat {
         _greenRequest = null;
         _yellowRequest = null;
         await Future.wait<void>(tasks);
-        await Future.delayed(const Duration(milliseconds: 1000));
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
       }
     } finally {
       _ledsLocked = false;
@@ -382,6 +382,7 @@ class RawThermostat {
           if (_verbose)
             log('connecting to $host:$port');
           connection = await Socket.connect(host, port);
+          // TODO(ianh): need to add something that uses connection.handleError();
           connection.encoding = utf8;
           final StreamBuffer<String> buffer = new StreamBuffer<String>(
             connection.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()),
@@ -672,18 +673,33 @@ class ThermostatTemperature extends Temperature {
 
 class StreamBuffer<T> {
   StreamBuffer(Stream<T> stream) {
-    stream.listen((T value) {
-      _values.add(value);
-      if (_signals.isNotEmpty)
-        _signals.removeAt(0).complete();
-    });
+    stream.listen(
+      (T value) {
+        _values.add(value);
+        if (_signals.isNotEmpty)
+          _signals.removeAt(0).complete();
+      },
+      onError: (Object exception, StackTrace/*?*/ stack) {
+        _exception = exception;
+        _stack = stack;
+        if (_signals.isNotEmpty)
+          _signals.removeAt(0).completeError(_exception, _stack);
+      },
+      cancelOnError: true,
+    );
   }
+
+  Object/*?*/ _exception;
+  StackTrace/*?*/ _stack;
 
   List<T> _values = <T>[];
 
   List<Completer<void>> _signals = <Completer<void>>[];
 
   Future<T> readValue() async {
+    if (_exception != null) {
+      return Future<T>.error(_exception, _stack);
+    }
     if (_values.isEmpty || _signals.isNotEmpty) {
       Completer<void> completer = new Completer<void>();
       _signals.add(completer);
