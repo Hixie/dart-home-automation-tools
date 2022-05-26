@@ -21,8 +21,11 @@
 
 // RPI_BPLUS_GPIO_J8_XX refers to pin XX on the pinout, not the "BCM"
 // number, nor the GPIO number.
-#define SENSOR_PIN RPI_BPLUS_GPIO_J8_32 // GPIO12 (sensing pin)
-#define POWER_PIN RPI_BPLUS_GPIO_J8_31 // GPIO6 (output 3.3v)
+#define SENSOR1_PIN RPI_BPLUS_GPIO_J8_32 // GPIO12 (sensing pin)
+#define POWER1_PIN RPI_BPLUS_GPIO_J8_31 // GPIO6 (output 3.3v)
+
+#define SENSOR2_PIN RPI_BPLUS_GPIO_J8_36 // GPIO16 (sensing pin)
+#define POWER2_PIN RPI_BPLUS_GPIO_J8_35 // GPIO19 (output 3.3v)
 
 int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -31,18 +34,26 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Configure the sensor pin to use a pull-down resistor.
-  bcm2835_gpio_fsel(SENSOR_PIN, BCM2835_GPIO_FSEL_INPT);
-  bcm2835_gpio_set_pud(SENSOR_PIN, BCM2835_GPIO_PUD_DOWN);
+  // Configure sensor pin 1 to use a pull-down resistor.
+  bcm2835_gpio_fsel(SENSOR1_PIN, BCM2835_GPIO_FSEL_INPT);
+  bcm2835_gpio_set_pud(SENSOR1_PIN, BCM2835_GPIO_PUD_DOWN);
+
+  // Configure sensor pin 2 to use a pull-down resistor.
+  bcm2835_gpio_fsel(SENSOR2_PIN, BCM2835_GPIO_FSEL_INPT);
+  bcm2835_gpio_set_pud(SENSOR2_PIN, BCM2835_GPIO_PUD_DOWN);
 
   // Sensor should be connected to 3.3v rail (not ground);
-  // here we configure a pin to act as that rail.
-  bcm2835_gpio_fsel(POWER_PIN, BCM2835_GPIO_FSEL_OUTP);
-  bcm2835_gpio_set(POWER_PIN);
+  // here we configure two pins to act as that rail.
+  bcm2835_gpio_fsel(POWER1_PIN, BCM2835_GPIO_FSEL_OUTP);
+  bcm2835_gpio_set(POWER1_PIN);
+  bcm2835_gpio_fsel(POWER2_PIN, BCM2835_GPIO_FSEL_OUTP);
+  bcm2835_gpio_set(POWER2_PIN);
 
   while (1) {
-    uint8_t value = bcm2835_gpio_lev(SENSOR_PIN);
-    printf("%c", value);
+    uint8_t sensor1 = bcm2835_gpio_lev(SENSOR1_PIN);
+    uint8_t sensor2 = bcm2835_gpio_lev(SENSOR2_PIN);
+    uint8_t result = sensor1 | (sensor2 << 1);
+    printf("%c", result);
     delay(100);
   }
 
