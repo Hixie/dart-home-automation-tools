@@ -10,21 +10,39 @@ class PacketBuffer {
   int _cursor = 0; // index of end of last read
   int _length = 0; // total bytes allocated
 
+  /// Adds [data] to the end of the buffer.
+  /// Increments [available] by the length of [data].
   void add(Uint8List data) {
     _buffer.add(data);
     _length += data.length;
-    assert(_buffer.fold<int>(0, (int current, Uint8List next) => current + next.length) == _length);
+    assert(
+      _buffer.fold<int>(
+            0,
+            (int current, Uint8List next) => current + next.length,
+          ) ==
+          _length,
+    );
   }
 
+  /// Returns the number of unread bytes.
   int get available {
-    assert(_buffer.fold<int>(0, (int current, Uint8List next) => current + next.length) == _length);
+    assert(
+      _buffer.fold<int>(
+            0,
+            (int current, Uint8List next) => current + next.length,
+          ) ==
+          _length,
+    );
     return _length - _cursor;
   }
 
+  /// Marks all bytes as unread.
   void rewind() {
     _cursor = _start;
   }
 
+  /// Reads the first 8 unread bytes, and returns them as an integer.
+  /// Marks those bytes as read and decrements [available] by 8.
   int readInt64() {
     assert(available >= 8); // contract
     assert(_start < _buffer.first.length); // invariant
@@ -40,7 +58,7 @@ class PacketBuffer {
         bytes = packet;
       } else {
         // the int stradles the boundary
-        flatten();
+        _flatten();
         bytes = _buffer.single;
         packetOffset = _cursor;
       }
@@ -50,6 +68,8 @@ class PacketBuffer {
     throw StateError('Unreachable.');
   }
 
+  /// Reads the first [length] unread bytes, and returns them as an [Uint8List].
+  /// Marks those bytes as read and decrements [available] by [length].
   Uint8List readUint8List(int length) {
     assert(length <= available); // contract
     assert(_start < _buffer.first.length); // invariant
@@ -68,24 +88,32 @@ class PacketBuffer {
         bytes = packet;
       } else {
         // the bytes stradle a boundary
-        flatten();
+        _flatten();
         bytes = _buffer.single;
         packetOffset = _cursor;
       }
       _cursor += length;
-      return bytes.buffer.asUint8List(bytes.offsetInBytes + packetOffset, length);
+      return bytes.buffer
+          .asUint8List(bytes.offsetInBytes + packetOffset, length);
     }
     throw StateError('Unreachable.');
   }
 
-  void flatten() {
+  void _flatten() {
     Uint8List bytes = Uint8List(_length - _start);
     _length = bytes.length;
     _cursor -= _start;
     int index = 0;
     for (Uint8List packet in _buffer) {
-      if (_start > 0) { 
-        bytes.setRange(index, index + (packet.length - _start), packet.buffer.asUint8List(packet.offsetInBytes + _start, packet.length - _start));
+      if (_start > 0) {
+        bytes.setRange(
+          index,
+          index + (packet.length - _start),
+          packet.buffer.asUint8List(
+            packet.offsetInBytes + _start,
+            packet.length - _start,
+          ),
+        );
         index += packet.length - _start;
         _start = 0;
       } else {
@@ -99,6 +127,7 @@ class PacketBuffer {
     assert(_cursor <= _buffer.first.length);
   }
 
+  /// Forgets all bytes marked as read.
   void checkpoint() {
     _start = _cursor;
     while (_buffer.isNotEmpty && _buffer.first.length <= _start) {
