@@ -20,7 +20,7 @@ import '../watch_stream.dart';
 enum ThermostatStatus { heating, cooling, fan, idle }
 
 const bool _verbose = true;
-const bool _debugProtocol = true;
+const bool _debugProtocol = false;
 
 class _PendingCommand {
   _PendingCommand(this.message);

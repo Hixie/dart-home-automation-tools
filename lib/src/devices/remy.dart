@@ -74,6 +74,21 @@ class RemyUi {
     return _messageLabelIndex.containsKey(label);
   }
 
+  Set<String> getNotificationsWithArgument(String label) {
+    Set<String> result = <String>{};
+    for (RemyMessage message in messages) {
+      if (message.label.startsWith(label)) {
+        int spaceIndex = message.label.indexOf(' ');
+        if (spaceIndex <= 0)
+          continue;
+        String prefix = message.label.substring(0, spaceIndex);
+        if (label == prefix)
+          result.add(message.label.substring(spaceIndex + 1));
+      }
+    }
+    return result;
+  }
+
   Map<String, Set<RemyMessage>> _messageClassIndex;
 
   Iterable<RemyMessage> getMessagesByClass(String className) sync* {
@@ -474,6 +489,11 @@ class RemyMultiplexer {
   bool hasNotification(String label) {
     assert(_remy.currentState != null);
     return _remy.currentState.hasNotification(label);
+  }
+
+  Set<String> getNotificationsWithArgument(String label) {
+    assert(_remy.currentState != null);
+    return _remy.currentState.getNotificationsWithArgument(label);
   }
 
   void pushButton(RemyButton button) {

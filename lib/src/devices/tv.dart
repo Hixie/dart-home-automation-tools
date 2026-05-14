@@ -65,6 +65,10 @@ class TelevisionTransaction {
     assert(!_done.isCompleted);
     if (_debugDumpTraffic)
       print('$_timestamp ==> $message');
+    if (television._socket == null) {
+      television._currentTransaction = null;
+      throw new TelevisionException('No connection to television.', null, television);
+    }
     television._socket.write('$message\x0d');
   }
 
@@ -98,6 +102,7 @@ class TelevisionTransaction {
     assert(_error == null);
     _error = error;
     _done.completeError(error);
+    television._currentTransaction = null;
     if (television._transactionQueue != null) {
       while (television._transactionQueue.isNotEmpty)
         television._transactionQueue.removeFirst().completeError(error);
@@ -620,6 +625,7 @@ class Television {
             if ((error is TelevisionException) ||
                 ((error is SocketException) &&
                  ((error.osError.errorCode == 32) || // broken pipe - they accepted the connection then closed it on us
+                  (error.osError.errorCode == 111) || // connection refused
                   (error.osError.errorCode == 113) || // no route to host - server went down or network went down
                   (error.osError.errorCode == 104)))) { // connection reset by peer - same
               errors ??= <dynamic>[];
